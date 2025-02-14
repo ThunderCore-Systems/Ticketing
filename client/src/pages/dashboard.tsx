@@ -7,6 +7,7 @@ import { createSubscription, SUBSCRIPTION_PRICE_ID } from "@/lib/stripe";
 import TicketList from "@/components/tickets/ticket-list";
 import type { Server, User } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 
 export default function Dashboard() {
   const { toast } = useToast();
@@ -17,29 +18,57 @@ export default function Dashboard() {
     queryKey: ["/api/auth/user"]
   });
 
+  const activateServer = useMutation({
+    mutationFn: async (serverId: number) => {
+      const res = await apiRequest("POST", `/api/servers/${serverId}/activate`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/servers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      toast({
+        title: "Server Activated",
+        description: "Successfully activated server using 1 token.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to activate server. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleServerActivation = async (serverId: number) => {
+    try {
+      if (!user?.serverTokens || user.serverTokens <= 0) {
+        // No tokens available, redirect to subscription
+        const session = await createSubscription(SUBSCRIPTION_PRICE_ID, serverId);
+        if (session.url) {
+          window.location.href = session.url;
+        }
+      } else {
+        // Use a token to activate the server
+        await activateServer.mutateAsync(serverId);
+      }
+    } catch (error) {
+      console.error('Failed to handle server activation:', error);
+      toast({
+        title: "Error",
+        description: "Failed to process server activation. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   if (!servers || !user) {
     return null;
   }
 
   const availableTokens = user.serverTokens || 0;
   const claimedServers = servers.filter(s => s.claimedByUserId === user.id);
-  const canClaimMore = availableTokens > claimedServers.length;
-
-  const handleClaimServer = async (serverId: number) => {
-    try {
-      const session = await createSubscription(SUBSCRIPTION_PRICE_ID, serverId);
-      if (session.url) {
-        window.location.href = session.url;
-      }
-    } catch (error) {
-      console.error('Failed to claim server:', error);
-      toast({
-        title: "Error",
-        description: "Failed to claim server. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
+  const canClaimMore = availableTokens > 0;
 
   return (
     <div className="space-y-6">
@@ -47,10 +76,10 @@ export default function Dashboard() {
         <h1 className="text-3xl font-bold">Dashboard</h1>
         <div className="flex items-center gap-4">
           <span className="text-sm text-muted-foreground">
-            Server Claims Available:
+            Server Tokens Available:
           </span>
           <Badge variant={canClaimMore ? "default" : "secondary"}>
-            {availableTokens - claimedServers.length} / {availableTokens}
+            {availableTokens}
           </Badge>
         </div>
       </div>
@@ -94,20 +123,27 @@ export default function Dashboard() {
                 ) : (
                   <div className="space-y-4">
                     <div className="flex items-baseline justify-between">
-                      <div>
-                        <span className="text-3xl font-bold">$10</span>
-                        <span className="text-muted-foreground">/month</span>
+                      <div className="text-sm text-muted-foreground">
+                        {availableTokens > 0 ? (
+                          "Use 1 token to activate"
+                        ) : (
+                          "Purchase subscription to activate"
+                        )}
                       </div>
                       <Badge variant="outline">
-                        {canClaimMore ? "Available" : "No Claims Available"}
+                        {canClaimMore ? "Available" : "No Tokens"}
                       </Badge>
                     </div>
                     <Button
                       className="w-full"
-                      onClick={() => handleClaimServer(server.id)}
-                      disabled={!canClaimMore}
+                      onClick={() => handleServerActivation(server.id)}
+                      disabled={activateServer.isPending}
                     >
-                      {canClaimMore ? "Activate Server" : "No Claims Available"}
+                      {availableTokens > 0 ? (
+                        "Activate with Token"
+                      ) : (
+                        "Purchase Subscription"
+                      )}
                     </Button>
                   </div>
                 )}

@@ -157,6 +157,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(message);
   });
 
+  //Add new endpoint for activating servers with tokens
+  app.post('/api/servers/:serverId/activate', requireAuth, async (req, res) => {
+    try {
+      const serverId = parseInt(req.params.serverId);
+      const userId = (req.user as any).id;
+
+      // Get user and check tokens
+      const user = await storage.getUser(userId);
+      if (!user || !user.serverTokens || user.serverTokens <= 0) {
+        return res.status(400).json({ 
+          error: "No server tokens available. Please purchase a subscription." 
+        });
+      }
+
+      // Update user's tokens
+      await storage.updateUser(userId, {
+        serverTokens: user.serverTokens - 1
+      });
+
+      // Activate the server
+      const server = await storage.updateServer(serverId, {
+        subscriptionStatus: "active",
+        claimedByUserId: userId
+      });
+
+      res.json(server);
+    } catch (error) {
+      console.error('Server activation error:', error);
+      res.status(500).json({ error: "Failed to activate server" });
+    }
+  });
+
   // Stripe webhook - no auth required
   app.post('/api/stripe/webhook', setupStripeWebhooks());
 
