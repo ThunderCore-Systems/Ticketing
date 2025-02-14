@@ -39,7 +39,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     clientID: DISCORD_CLIENT_ID,
     clientSecret: DISCORD_CLIENT_SECRET,
     callbackURL: DISCORD_CALLBACK_URL,
-    scope: ['identify', 'guilds']
+    scope: ['identify', 'guilds', 'email'] // Added email scope
   }, async (accessToken, refreshToken, profile, done) => {
     try {
       let user = await storage.getUserByDiscordId(profile.id);
@@ -84,10 +84,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/auth/discord', passport.authenticate('discord'));
   app.get('/api/auth/discord/callback', 
     passport.authenticate('discord', { 
-      failureRedirect: '/login',
+      failureRedirect: '/login?error=auth_failed',
       successRedirect: '/dashboard'
     })
   );
+
+  app.post('/api/auth/logout', (req, res) => {
+    req.logout(() => {
+      res.json({ success: true });
+    });
+  });
 
   app.get('/api/auth/user', (req, res) => {
     if (!req.user) {
