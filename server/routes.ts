@@ -2,12 +2,13 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
-import { insertTicketSchema, insertMessageSchema } from "@shared/schema";
+import { insertTicketSchema, insertMessageSchema, insertServerSchema } from "@shared/schema";
 import { setupDiscordBot } from "./discord";
 import { setupStripeWebhooks, createSubscription } from "./stripe";
 import session from "express-session";
 import passport from "passport";
 import { Strategy as DiscordStrategy } from "passport-discord";
+import type { DiscordGuild } from "./types";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
@@ -19,6 +20,25 @@ function requireAuth(req: any, res: any, next: any) {
     return res.status(401).json({ message: 'Not authenticated' });
   }
   next();
+}
+
+async function registerUserServers(userId: number, guilds: DiscordGuild[]) {
+  for (const guild of guilds) {
+    // Only register servers where the user is an admin
+    if (guild.owner || (BigInt(guild.permissions) & BigInt(0x8)) === BigInt(0x8)) {
+      const existingServer = await storage.getServerByDiscordId(guild.id);
+      if (!existingServer) {
+        await storage.createServer({
+          discordId: guild.id,
+          name: guild.name,
+          icon: guild.icon ? `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png` : null,
+          ownerId: userId,
+          subscriptionId: null,
+          subscriptionStatus: null,
+        });
+      }
+    }
+  }
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -39,8 +59,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     clientID: DISCORD_CLIENT_ID,
     clientSecret: DISCORD_CLIENT_SECRET,
     callbackURL: DISCORD_CALLBACK_URL,
-    scope: ['identify', 'guilds', 'email'] // Added email scope
-  }, async (accessToken, refreshToken, profile, done) => {
+    scope: ['identify', 'guilds', 'email']
+  }, async (accessToken, refreshToken, profile: any, done) => {
     try {
       let user = await storage.getUserByDiscordId(profile.id);
 
@@ -60,6 +80,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           refreshToken,
         });
       }
+
+      // Register user's servers
+      await registerUserServers(user.id, profile.guilds);
 
       done(null, user);
     } catch (error) {
@@ -150,7 +173,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize Discord bot in the background
   setupDiscordBot(httpServer).catch((error) => {
     console.error('Failed to initialize Discord bot:', error);
-    // Continue running the server even if bot fails to initialize
   });
 
   return httpServer;
