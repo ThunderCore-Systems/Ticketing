@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { createSubscription } from "@/lib/stripe";
 import type { Server } from "@shared/schema";
 
-const PRICE_ID = import.meta.env.VITE_STRIPE_PRICE_ID!;
+const PRICE_ID = "price_1QsXUtP6DDFtG7MvdFFlnNLa"; // Direct price ID
 
 export default function Billing() {
   const { toast } = useToast();
@@ -24,7 +24,11 @@ export default function Billing() {
   const handleSubscribe = async (serverId?: number) => {
     try {
       setLoading(true);
+      console.log('Starting subscription process:', { serverId, priceId: PRICE_ID });
+
       const session = await createSubscription(PRICE_ID, serverId);
+      console.log('Subscription session created:', session);
+
       if (session.url) {
         window.location.href = session.url;
       } else {

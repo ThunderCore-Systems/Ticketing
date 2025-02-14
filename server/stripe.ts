@@ -9,8 +9,8 @@ if (!process.env.APP_URL) {
   throw new Error("APP_URL is required");
 }
 
-// Ensure APP_URL doesn't end with a trailing slash
-const APP_URL = process.env.APP_URL.replace(/\/$/, '');
+// Ensure APP_URL doesn't have any spaces or trailing slashes
+const APP_URL = process.env.APP_URL.trim().replace(/\/$/, '');
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2025-01-27.acacia",
@@ -30,6 +30,12 @@ export async function createSubscription(priceId: string, serverId?: number) {
       metadata.serverId = serverId.toString();
     }
 
+    // Verify the price exists
+    const price = await stripe.prices.retrieve(priceId);
+    if (!price) {
+      throw new Error(`Invalid price ID: ${priceId}`);
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
@@ -42,6 +48,11 @@ export async function createSubscription(priceId: string, serverId?: number) {
       metadata,
       success_url: `${APP_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${APP_URL}/billing`,
+    });
+
+    console.log('Checkout session created:', { 
+      sessionId: session.id,
+      url: session.url 
     });
 
     return session;
