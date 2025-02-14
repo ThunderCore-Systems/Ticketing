@@ -10,6 +10,8 @@ export const users = pgTable("users", {
   avatarUrl: text("avatar_url"),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
+  serverTokens: integer("server_tokens").default(0),
+  isAdmin: boolean("is_admin").default(false),
 });
 
 export const servers = pgTable("servers", {
@@ -20,6 +22,7 @@ export const servers = pgTable("servers", {
   ownerId: integer("owner_id").references(() => users.id),
   subscriptionId: text("subscription_id"),
   subscriptionStatus: text("subscription_status"),
+  claimedByUserId: integer("claimed_by_user_id").references(() => users.id),
 });
 
 export const tickets = pgTable("tickets", {
@@ -40,7 +43,6 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Define relationships
 export const userRelations = relations(users, ({ many }) => ({
   servers: many(servers),
   tickets: many(tickets),

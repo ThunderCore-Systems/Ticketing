@@ -1,6 +1,12 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import type { User } from "@shared/schema";
 
 export default function Navbar() {
@@ -49,14 +55,41 @@ export default function Navbar() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <span>{user.username}</span>
-            {user.avatarUrl && (
-              <img
-                src={user.avatarUrl}
-                alt={user.username}
-                className="h-8 w-8 rounded-full"
-              />
-            )}
+            <Popover>
+              <PopoverTrigger>
+                <div className="flex items-center gap-2 cursor-pointer">
+                  <span>{user.username}</span>
+                  {user.avatarUrl && (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.username}
+                      className="h-8 w-8 rounded-full"
+                    />
+                  )}
+                </div>
+              </PopoverTrigger>
+              <PopoverContent className="w-80">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <h4 className="font-medium">Subscription Status</h4>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>Available Server Claims:</span>
+                      <Badge variant="secondary">
+                        {user.serverTokens} servers
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Need more servers? Create a support ticket to request additional access.
+                  </div>
+                  {user.isAdmin && (
+                    <div className="pt-2 border-t">
+                      <Badge variant="destructive">Admin</Badge>
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
       </div>

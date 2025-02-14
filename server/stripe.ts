@@ -35,13 +35,7 @@ export async function createSubscription(priceId: string, serverId?: number) {
       metadata.serverId = serverId.toString();
     }
 
-    // Verify the price exists
-    const price = await stripe.prices.retrieve(priceId);
-    if (!price) {
-      throw new Error(`Invalid price ID: ${priceId}`);
-    }
-
-    const session = await stripe.checkout.sessions.create({
+    const subscription = await stripe.checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
       line_items: [
@@ -56,13 +50,13 @@ export async function createSubscription(priceId: string, serverId?: number) {
     });
 
     console.log('Checkout session created:', { 
-      sessionId: session.id,
-      url: session.url 
+      sessionId: subscription.id,
+      url: subscription.url 
     });
 
-    return session;
+    return subscription;
   } catch (error) {
-    console.error('Stripe checkout session creation failed:', error);
+    console.error('Subscription creation error:', error);
     throw error;
   }
 }
@@ -100,34 +94,53 @@ export function setupStripeWebhooks() {
             subscriptionId: session.subscription
           });
 
-          // Update server subscription status
+          // Get the user from the server if specified
+          let userId: number | undefined;
           if (session.metadata?.serverId) {
-            await storage.updateServer(parseInt(session.metadata.serverId), {
-              subscriptionId: session.subscription as string,
-              subscriptionStatus: "active",
-            });
-            console.log('Server subscription activated:', session.metadata.serverId);
+            const server = await storage.getServer(parseInt(session.metadata.serverId));
+            if (server) {
+              userId = server.ownerId;
+            }
+          }
+
+          if (userId) {
+            // Update user's server tokens (3 tokens for new subscription)
+            const user = await storage.getUser(userId);
+            if (user) {
+              await storage.updateUser(userId, {
+                serverTokens: 3,
+              });
+            }
+
+            // If a server was specified, claim it
+            if (session.metadata?.serverId) {
+              await storage.updateServer(parseInt(session.metadata.serverId), {
+                subscriptionId: session.subscription as string,
+                subscriptionStatus: "active",
+                claimedByUserId: userId,
+              });
+            }
           }
           break;
 
         case "customer.subscription.deleted":
-        case "customer.subscription.updated":
-          const subscription = event.data.object as Stripe.Subscription;
-          console.log('Subscription updated:', {
-            subscriptionId: subscription.id,
-            status: subscription.status
-          });
+          const deletedSubscription = event.data.object as Stripe.Subscription;
+          // Find server by subscription ID and remove claims
+          const serverToUnsubscribe = await storage.getServerBySubscriptionId(deletedSubscription.id);
+          if (serverToUnsubscribe && serverToUnsubscribe.claimedByUserId) {
+            // Remove server claim and update status
+            await storage.updateServer(serverToUnsubscribe.id, {
+              subscriptionStatus: "inactive",
+              claimedByUserId: null,
+            });
 
-          // Find server by subscription ID and update status
-          const server = await storage.getServerBySubscriptionId(subscription.id);
-          if (server) {
-            await storage.updateServer(server.id, {
-              subscriptionStatus: subscription.status === "active" ? "active" : "inactive",
-            });
-            console.log('Server subscription updated:', { 
-              serverId: server.id, 
-              status: subscription.status 
-            });
+            // Update user's available tokens
+            const user = await storage.getUser(serverToUnsubscribe.claimedByUserId);
+            if (user) {
+              await storage.updateUser(user.id, {
+                serverTokens: Math.max(0, (user.serverTokens || 0) - 1),
+              });
+            }
           }
           break;
       }
