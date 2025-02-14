@@ -1,14 +1,16 @@
-export async function createSubscription(priceId: string) {
+export async function createSubscription(priceId: string, serverId?: number) {
   const res = await fetch("/api/stripe/create-subscription", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ priceId }),
+    body: JSON.stringify({ priceId, serverId }),
+    credentials: "include",
   });
 
   if (!res.ok) {
-    throw new Error("Failed to create subscription");
+    const error = await res.json();
+    throw new Error(error.error || "Failed to create subscription");
   }
 
   return res.json();

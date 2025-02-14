@@ -21,15 +21,20 @@ export default function Billing() {
     queryKey: ["/api/servers"]
   });
 
-  const handleSubscribe = async () => {
+  const handleSubscribe = async (serverId?: number) => {
     try {
       setLoading(true);
-      const session = await createSubscription(PRICE_ID);
-      window.location.href = session.url!;
+      const session = await createSubscription(PRICE_ID, serverId);
+      if (session.url) {
+        window.location.href = session.url;
+      } else {
+        throw new Error("No checkout URL returned");
+      }
     } catch (error) {
+      console.error("Subscription error:", error);
       toast({
         title: "Error",
-        description: "Failed to create subscription",
+        description: "Failed to create subscription. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -46,27 +51,40 @@ export default function Billing() {
       <h1 className="text-3xl font-bold">Billing</h1>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle>Pro Plan</CardTitle>
-            <CardDescription>
-              Unlimited tickets and premium support
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-4">
-              <span className="text-3xl font-bold">$10</span>
-              <span className="text-muted-foreground">/month</span>
-            </div>
-            <Button
-              className="w-full"
-              onClick={handleSubscribe}
-              disabled={loading}
-            >
-              Subscribe Now
-            </Button>
-          </CardContent>
-        </Card>
+        {servers.map((server) => (
+          <Card key={server.id}>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {server.icon && (
+                  <img 
+                    src={server.icon} 
+                    alt={server.name}
+                    className="h-6 w-6 rounded-full"
+                  />
+                )}
+                {server.name}
+              </CardTitle>
+              <CardDescription>
+                Status: {server.subscriptionStatus || "No subscription"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <span className="text-3xl font-bold">$10</span>
+                <span className="text-muted-foreground">/month</span>
+              </div>
+              <Button
+                className="w-full"
+                onClick={() => handleSubscribe(server.id)}
+                disabled={loading || server.subscriptionStatus === "active"}
+              >
+                {server.subscriptionStatus === "active" 
+                  ? "Active" 
+                  : "Subscribe Now"}
+              </Button>
+            </CardContent>
+          </Card>
+        ))}
       </div>
     </div>
   );

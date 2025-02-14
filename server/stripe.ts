@@ -1,11 +1,24 @@
 import Stripe from "stripe";
 import { storage } from "./storage";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error("STRIPE_SECRET_KEY is required");
+}
+
+if (!process.env.APP_URL) {
+  throw new Error("APP_URL is required");
+}
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2025-01-27.acacia",
 });
 
-export async function createSubscription(priceId: string) {
+export async function createSubscription(priceId: string, serverId?: number) {
+  const metadata: Record<string, string> = {};
+  if (serverId) {
+    metadata.serverId = serverId.toString();
+  }
+
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     payment_method_types: ["card"],
@@ -15,6 +28,7 @@ export async function createSubscription(priceId: string) {
         quantity: 1,
       },
     ],
+    metadata,
     success_url: `${process.env.APP_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${process.env.APP_URL}/billing`,
   });
@@ -25,13 +39,17 @@ export async function createSubscription(priceId: string) {
 export function setupStripeWebhooks() {
   return async (req: any, res: any) => {
     const sig = req.headers["stripe-signature"];
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+      throw new Error("STRIPE_WEBHOOK_SECRET is required");
+    }
+
     let event;
 
     try {
       event = stripe.webhooks.constructEvent(
         req.body,
         sig,
-        process.env.STRIPE_WEBHOOK_SECRET!
+        process.env.STRIPE_WEBHOOK_SECRET
       );
     } catch (err) {
       res.status(400).send(`Webhook Error: ${(err as Error).message}`);
