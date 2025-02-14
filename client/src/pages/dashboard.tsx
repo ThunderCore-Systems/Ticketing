@@ -67,8 +67,19 @@ export default function Dashboard() {
   }
 
   const availableTokens = user.serverTokens || 0;
-  const claimedServers = servers.filter(s => s.claimedByUserId === user.id);
   const canClaimMore = availableTokens > 0;
+
+  // Sort servers: active first, then owned but inactive, then others
+  const sortedServers = [...servers].sort((a, b) => {
+    const aActive = a.subscriptionStatus === "active";
+    const bActive = b.subscriptionStatus === "active";
+    const aOwned = a.claimedByUserId === user.id;
+    const bOwned = b.claimedByUserId === user.id;
+
+    if (aActive !== bActive) return aActive ? -1 : 1;
+    if (aOwned !== bOwned) return aOwned ? -1 : 1;
+    return 0;
+  });
 
   return (
     <div className="space-y-6">
@@ -85,13 +96,13 @@ export default function Dashboard() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {servers.map((server) => {
+        {sortedServers.map((server) => {
           const isClaimed = Boolean(server.claimedByUserId);
           const isOwnClaim = server.claimedByUserId === user.id;
           const hasActiveSubscription = server.subscriptionStatus === "active";
 
           return (
-            <Card key={server.id}>
+            <Card key={server.id} className={hasActiveSubscription ? "border-primary" : undefined}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   {server.icon && (
@@ -119,7 +130,16 @@ export default function Dashboard() {
               </CardHeader>
               <CardContent>
                 {hasActiveSubscription ? (
-                  <TicketList serverId={server.id} />
+                  <div className="space-y-4">
+                    <TicketList serverId={server.id} />
+                    <Button
+                      className="w-full"
+                      variant="secondary"
+                      onClick={() => window.location.href = `/server/${server.id}`}
+                    >
+                      Manage Server
+                    </Button>
+                  </div>
                 ) : (
                   <div className="space-y-4">
                     <div className="flex items-baseline justify-between">
