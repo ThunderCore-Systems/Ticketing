@@ -131,6 +131,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(servers);
   });
 
+  app.get('/api/servers/:serverId', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Ensure user has access to this server
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized to view this server' });
+      }
+
+      res.json(server);
+    } catch (error) {
+      console.error('Error fetching server:', error);
+      res.status(500).json({ message: 'Failed to fetch server details' });
+    }
+  });
+
   app.get('/api/servers/:serverId/tickets', requireAuth, async (req, res) => {
     const tickets = await storage.getTicketsByServerId(parseInt(req.params.serverId));
     res.json(tickets);
@@ -166,8 +186,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get user and check tokens
       const user = await storage.getUser(userId);
       if (!user || !user.serverTokens || user.serverTokens <= 0) {
-        return res.status(400).json({ 
-          error: "No server tokens available. Please purchase a subscription." 
+        return res.status(400).json({
+          error: "No server tokens available. Please purchase a subscription."
         });
       }
 
