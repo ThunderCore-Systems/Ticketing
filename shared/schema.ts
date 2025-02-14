@@ -1,6 +1,7 @@
 import { pgTable, text, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { relations } from "drizzle-orm";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -38,6 +39,44 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// Define relationships
+export const userRelations = relations(users, ({ many }) => ({
+  servers: many(servers),
+  tickets: many(tickets),
+  messages: many(messages),
+}));
+
+export const serverRelations = relations(servers, ({ one, many }) => ({
+  owner: one(users, {
+    fields: [servers.ownerId],
+    references: [users.id],
+  }),
+  tickets: many(tickets),
+}));
+
+export const ticketRelations = relations(tickets, ({ one, many }) => ({
+  server: one(servers, {
+    fields: [tickets.serverId],
+    references: [servers.id],
+  }),
+  user: one(users, {
+    fields: [tickets.userId],
+    references: [users.id],
+  }),
+  messages: many(messages),
+}));
+
+export const messageRelations = relations(messages, ({ one }) => ({
+  ticket: one(tickets, {
+    fields: [messages.ticketId],
+    references: [tickets.id],
+  }),
+  user: one(users, {
+    fields: [messages.userId],
+    references: [users.id],
+  }),
+}));
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertServerSchema = createInsertSchema(servers).omit({ id: true });

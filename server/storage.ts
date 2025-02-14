@@ -1,7 +1,12 @@
 import { 
-  User, InsertUser, Server, InsertServer, 
-  Ticket, InsertTicket, Message, InsertMessage 
+  users, servers, tickets, messages,
+  type User, type InsertUser, 
+  type Server, type InsertServer,
+  type Ticket, type InsertTicket,
+  type Message, type InsertMessage 
 } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -28,150 +33,94 @@ export interface IStorage {
   createMessage(message: InsertMessage): Promise<Message>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private servers: Map<number, Server>;
-  private tickets: Map<number, Ticket>;
-  private messages: Map<number, Message>;
-  private currentId: { [key: string]: number };
-
-  constructor() {
-    this.users = new Map();
-    this.servers = new Map();
-    this.tickets = new Map();
-    this.messages = new Map();
-    this.currentId = {
-      users: 1,
-      servers: 1,
-      tickets: 1,
-      messages: 1,
-    };
-  }
-
+export class DatabaseStorage implements IStorage {
   // Users
   async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
   async getUserByDiscordId(discordId: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.discordId === discordId,
-    );
+    const [user] = await db.select().from(users).where(eq(users.discordId, discordId));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.currentId.users++;
-    const user: User = {
-      ...insertUser,
-      id,
-      avatarUrl: insertUser.avatarUrl || null,
-      accessToken: insertUser.accessToken || null,
-      refreshToken: insertUser.refreshToken || null,
-    };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
   async updateUser(id: number, updates: Partial<User>): Promise<User> {
-    const user = await this.getUser(id);
-    if (!user) throw new Error("User not found");
-    const updatedUser = { ...user, ...updates };
-    this.users.set(id, updatedUser);
-    return updatedUser;
+    const [user] = await db
+      .update(users)
+      .set(updates)
+      .where(eq(users.id, id))
+      .returning();
+    return user;
   }
 
   // Servers
   async getServer(id: number): Promise<Server | undefined> {
-    return this.servers.get(id);
+    const [server] = await db.select().from(servers).where(eq(servers.id, id));
+    return server;
   }
 
   async getServerByDiscordId(discordId: string): Promise<Server | undefined> {
-    return Array.from(this.servers.values()).find(
-      (server) => server.discordId === discordId,
-    );
+    const [server] = await db.select().from(servers).where(eq(servers.discordId, discordId));
+    return server;
   }
 
   async getServersByUserId(userId: number): Promise<Server[]> {
-    return Array.from(this.servers.values()).filter(
-      (server) => server.ownerId === userId,
-    );
+    return db.select().from(servers).where(eq(servers.ownerId, userId));
   }
 
   async createServer(insertServer: InsertServer): Promise<Server> {
-    const id = this.currentId.servers++;
-    const server: Server = {
-      ...insertServer,
-      id,
-      icon: insertServer.icon || null,
-      ownerId: insertServer.ownerId || null,
-      subscriptionId: insertServer.subscriptionId || null,
-      subscriptionStatus: insertServer.subscriptionStatus || null,
-    };
-    this.servers.set(id, server);
+    const [server] = await db.insert(servers).values(insertServer).returning();
     return server;
   }
 
   async updateServer(id: number, updates: Partial<Server>): Promise<Server> {
-    const server = await this.getServer(id);
-    if (!server) throw new Error("Server not found");
-    const updatedServer = { ...server, ...updates };
-    this.servers.set(id, updatedServer);
-    return updatedServer;
+    const [server] = await db
+      .update(servers)
+      .set(updates)
+      .where(eq(servers.id, id))
+      .returning();
+    return server;
   }
 
   // Tickets
   async getTicket(id: number): Promise<Ticket | undefined> {
-    return this.tickets.get(id);
+    const [ticket] = await db.select().from(tickets).where(eq(tickets.id, id));
+    return ticket;
   }
 
   async getTicketsByServerId(serverId: number): Promise<Ticket[]> {
-    return Array.from(this.tickets.values()).filter(
-      (ticket) => ticket.serverId === serverId,
-    );
+    return db.select().from(tickets).where(eq(tickets.serverId, serverId));
   }
 
   async createTicket(insertTicket: InsertTicket): Promise<Ticket> {
-    const id = this.currentId.tickets++;
-    const ticket: Ticket = {
-      ...insertTicket,
-      id,
-      status: insertTicket.status || "open",
-      createdAt: new Date(),
-      serverId: insertTicket.serverId || null,
-      userId: insertTicket.userId || null,
-      discordChannelId: insertTicket.discordChannelId || null,
-    };
-    this.tickets.set(id, ticket);
+    const [ticket] = await db.insert(tickets).values(insertTicket).returning();
     return ticket;
   }
 
   async updateTicket(id: number, updates: Partial<Ticket>): Promise<Ticket> {
-    const ticket = await this.getTicket(id);
-    if (!ticket) throw new Error("Ticket not found");
-    const updatedTicket = { ...ticket, ...updates };
-    this.tickets.set(id, updatedTicket);
-    return updatedTicket;
+    const [ticket] = await db
+      .update(tickets)
+      .set(updates)
+      .where(eq(tickets.id, id))
+      .returning();
+    return ticket;
   }
 
   // Messages
   async getMessagesByTicketId(ticketId: number): Promise<Message[]> {
-    return Array.from(this.messages.values()).filter(
-      (message) => message.ticketId === ticketId,
-    );
+    return db.select().from(messages).where(eq(messages.ticketId, ticketId));
   }
 
   async createMessage(insertMessage: InsertMessage): Promise<Message> {
-    const id = this.currentId.messages++;
-    const message: Message = {
-      ...insertMessage,
-      id,
-      createdAt: new Date(),
-      userId: insertMessage.userId || null,
-      ticketId: insertMessage.ticketId || null,
-    };
-    this.messages.set(id, message);
+    const [message] = await db.insert(messages).values(insertMessage).returning();
     return message;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();

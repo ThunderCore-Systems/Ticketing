@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { createSubscription } from "@/lib/stripe";
 import type { Server } from "@shared/schema";
@@ -17,17 +18,20 @@ const PRICE_ID = "price_1QsXUtP6DDFtG7MvdFFlnNLa"; // Direct price ID
 export default function Billing() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
-  const { data: servers } = useQuery<Server[]>({ 
-    queryKey: ["/api/servers"]
+  const { data: servers } = useQuery<Server[]>({
+    queryKey: ["/api/servers"],
   });
 
   const handleSubscribe = async (serverId?: number) => {
     try {
       setLoading(true);
-      console.log('Starting subscription process:', { serverId, priceId: PRICE_ID });
+      console.log("Starting subscription process:", {
+        serverId,
+        priceId: PRICE_ID,
+      });
 
       const session = await createSubscription(PRICE_ID, serverId);
-      console.log('Subscription session created:', session);
+      console.log("Subscription session created:", session);
 
       if (session.url) {
         window.location.href = session.url;
@@ -60,32 +64,62 @@ export default function Billing() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 {server.icon && (
-                  <img 
-                    src={server.icon} 
+                  <img
+                    src={server.icon}
                     alt={server.name}
                     className="h-6 w-6 rounded-full"
                   />
                 )}
                 {server.name}
               </CardTitle>
-              <CardDescription>
-                Status: {server.subscriptionStatus || "No subscription"}
+              <CardDescription className="flex items-center gap-2">
+                Status:{" "}
+                <Badge
+                  variant={server.subscriptionStatus === "active" ? "default" : "destructive"}
+                >
+                  {server.subscriptionStatus || "No subscription"}
+                </Badge>
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="mb-4">
-                <span className="text-3xl font-bold">$10</span>
-                <span className="text-muted-foreground">/month</span>
+              <div className="space-y-4">
+                {server.subscriptionStatus === "active" ? (
+                  <>
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <span className="text-3xl font-bold">$10</span>
+                        <span className="text-muted-foreground">/month</span>
+                      </div>
+                      <Badge variant="outline">Active</Badge>
+                    </div>
+                    <Button
+                      variant="secondary"
+                      className="w-full"
+                      onClick={() => handleSubscribe(server.id)}
+                      disabled={loading}
+                    >
+                      Manage Subscription
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <span className="text-3xl font-bold">$10</span>
+                        <span className="text-muted-foreground">/month</span>
+                      </div>
+                      <Badge variant="outline">Inactive</Badge>
+                    </div>
+                    <Button
+                      className="w-full"
+                      onClick={() => handleSubscribe(server.id)}
+                      disabled={loading}
+                    >
+                      Subscribe Now
+                    </Button>
+                  </>
+                )}
               </div>
-              <Button
-                className="w-full"
-                onClick={() => handleSubscribe(server.id)}
-                disabled={loading || server.subscriptionStatus === "active"}
-              >
-                {server.subscriptionStatus === "active" 
-                  ? "Active" 
-                  : "Subscribe Now"}
-              </Button>
             </CardContent>
           </Card>
         ))}

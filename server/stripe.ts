@@ -17,11 +17,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 });
 
 export async function createSubscription(priceId: string, serverId?: number) {
-  console.log('Creating Stripe checkout session:', { 
+  console.log('Creating subscription:', { 
     priceId, 
     serverId,
-    successUrl: `${APP_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${APP_URL}/billing`
   });
 
   try {
@@ -83,19 +81,45 @@ export function setupStripeWebhooks() {
       return;
     }
 
-    switch (event.type) {
-      case "checkout.session.completed":
-        const session = event.data.object as Stripe.Checkout.Session;
-        // Update server subscription status
-        if (session.metadata?.serverId) {
-          await storage.updateServer(parseInt(session.metadata.serverId), {
-            subscriptionId: session.subscription as string,
-            subscriptionStatus: "active",
-          });
-        }
-        break;
-    }
+    try {
+      switch (event.type) {
+        case "checkout.session.completed":
+          const session = event.data.object as Stripe.Checkout.Session;
+          // Update server subscription status
+          if (session.metadata?.serverId) {
+            await storage.updateServer(parseInt(session.metadata.serverId), {
+              subscriptionId: session.subscription as string,
+              subscriptionStatus: "active",
+            });
+            console.log('Server subscription activated:', session.metadata.serverId);
+          }
+          break;
 
-    res.json({ received: true });
+        case "customer.subscription.deleted":
+        case "customer.subscription.updated":
+          const subscription = event.data.object as Stripe.Subscription;
+          // Find server by subscription ID and update status
+          const servers = await stripe.subscriptions.search({
+            query: `metadata['subscription_id']:'${subscription.id}'`,
+          });
+
+          if (servers.data.length > 0) {
+            const serverId = parseInt(servers.data[0].metadata.serverId);
+            await storage.updateServer(serverId, {
+              subscriptionStatus: subscription.status === "active" ? "active" : "inactive",
+            });
+            console.log('Server subscription updated:', { 
+              serverId, 
+              status: subscription.status 
+            });
+          }
+          break;
+      }
+
+      res.json({ received: true });
+    } catch (error) {
+      console.error('Error processing webhook:', error);
+      res.status(500).send('Webhook processing failed');
+    }
   };
 }
