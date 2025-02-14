@@ -105,8 +105,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Auth routes
   app.get('/api/auth/discord', passport.authenticate('discord'));
-  app.get('/api/auth/discord/callback', 
-    passport.authenticate('discord', { 
+  app.get('/api/auth/discord/callback',
+    passport.authenticate('discord', {
       failureRedirect: '/login?error=auth_failed',
       successRedirect: '/dashboard'
     })
@@ -163,9 +163,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Stripe subscription - requires auth
   app.post('/api/stripe/create-subscription', requireAuth, async (req, res) => {
     try {
-      const subscription = await createSubscription(req.body.priceId);
+      const { priceId, serverId } = req.body;
+
+      if (!priceId) {
+        return res.status(400).json({ error: "Price ID is required" });
+      }
+
+      console.log('Creating subscription:', { priceId, serverId });
+      const subscription = await createSubscription(priceId, serverId);
+
+      if (!subscription?.url) {
+        throw new Error("Invalid response from Stripe");
+      }
+
       res.json(subscription);
     } catch (error) {
+      console.error('Subscription creation error:', error);
       res.status(400).json({ error: (error as Error).message });
     }
   });

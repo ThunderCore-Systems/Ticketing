@@ -9,31 +9,46 @@ if (!process.env.APP_URL) {
   throw new Error("APP_URL is required");
 }
 
+// Ensure APP_URL doesn't end with a trailing slash
+const APP_URL = process.env.APP_URL.replace(/\/$/, '');
+
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2025-01-27.acacia",
 });
 
 export async function createSubscription(priceId: string, serverId?: number) {
-  const metadata: Record<string, string> = {};
-  if (serverId) {
-    metadata.serverId = serverId.toString();
-  }
-
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    payment_method_types: ["card"],
-    line_items: [
-      {
-        price: priceId,
-        quantity: 1,
-      },
-    ],
-    metadata,
-    success_url: `${process.env.APP_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${process.env.APP_URL}/billing`,
+  console.log('Creating Stripe checkout session:', { 
+    priceId, 
+    serverId,
+    successUrl: `${APP_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+    cancelUrl: `${APP_URL}/billing`
   });
 
-  return session;
+  try {
+    const metadata: Record<string, string> = {};
+    if (serverId) {
+      metadata.serverId = serverId.toString();
+    }
+
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price: priceId,
+          quantity: 1,
+        },
+      ],
+      metadata,
+      success_url: `${APP_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${APP_URL}/billing`,
+    });
+
+    return session;
+  } catch (error) {
+    console.error('Stripe checkout session creation failed:', error);
+    throw error;
+  }
 }
 
 export function setupStripeWebhooks() {
@@ -52,6 +67,7 @@ export function setupStripeWebhooks() {
         process.env.STRIPE_WEBHOOK_SECRET
       );
     } catch (err) {
+      console.error('Webhook signature verification failed:', err);
       res.status(400).send(`Webhook Error: ${(err as Error).message}`);
       return;
     }
