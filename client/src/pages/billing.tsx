@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -13,14 +13,44 @@ import { useToast } from "@/hooks/use-toast";
 import { createSubscription } from "@/lib/stripe";
 import type { Server } from "@shared/schema";
 
-const PRICE_ID = "price_1QsXUtP6DDFtG7MvdFFlnNLa"; // Direct price ID
+const PRICE_ID = "price_1QsY8yP6DDFtG7MvtzQmVgyt"; // Direct price ID
 
 export default function Billing() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const { data: servers } = useQuery<Server[]>({
     queryKey: ["/api/servers"],
   });
+
+  useEffect(() => {
+    // Check URL parameters for subscription status
+    const params = new URLSearchParams(window.location.search);
+    const success = params.get('success');
+    const canceled = params.get('canceled');
+    const serverId = params.get('server_id');
+
+    if (success === 'true') {
+      toast({
+        title: "Subscription Activated",
+        description: "Your subscription has been successfully activated.",
+      });
+      // Invalidate servers query to refresh subscription status
+      queryClient.invalidateQueries({ queryKey: ["/api/servers"] });
+    } else if (canceled === 'true') {
+      toast({
+        title: "Subscription Canceled",
+        description: "Your subscription process was canceled.",
+        variant: "destructive",
+      });
+    }
+
+    // Clean up URL parameters
+    if (success || canceled) {
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, [toast, queryClient]);
 
   const handleSubscribe = async (serverId?: number) => {
     try {

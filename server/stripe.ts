@@ -44,8 +44,8 @@ export async function createSubscription(priceId: string, serverId?: number) {
         },
       ],
       metadata,
-      success_url: `${APP_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${APP_URL}/billing`,
+      success_url: `${APP_URL}/billing?success=true&session_id={CHECKOUT_SESSION_ID}&server_id=${serverId}`,
+      cancel_url: `${APP_URL}/billing?canceled=true`,
     });
 
     console.log('Checkout session created:', { 
@@ -82,9 +82,17 @@ export function setupStripeWebhooks() {
     }
 
     try {
+      console.log('Processing webhook event:', event.type);
+
       switch (event.type) {
         case "checkout.session.completed":
           const session = event.data.object as Stripe.Checkout.Session;
+          console.log('Checkout completed:', {
+            sessionId: session.id,
+            serverId: session.metadata?.serverId,
+            subscriptionId: session.subscription
+          });
+
           // Update server subscription status
           if (session.metadata?.serverId) {
             await storage.updateServer(parseInt(session.metadata.serverId), {
@@ -98,18 +106,19 @@ export function setupStripeWebhooks() {
         case "customer.subscription.deleted":
         case "customer.subscription.updated":
           const subscription = event.data.object as Stripe.Subscription;
-          // Find server by subscription ID and update status
-          const servers = await stripe.subscriptions.search({
-            query: `metadata['subscription_id']:'${subscription.id}'`,
+          console.log('Subscription updated:', {
+            subscriptionId: subscription.id,
+            status: subscription.status
           });
 
-          if (servers.data.length > 0) {
-            const serverId = parseInt(servers.data[0].metadata.serverId);
-            await storage.updateServer(serverId, {
+          // Find server by subscription ID and update status
+          const server = await storage.getServerBySubscriptionId(subscription.id);
+          if (server) {
+            await storage.updateServer(server.id, {
               subscriptionStatus: subscription.status === "active" ? "active" : "inactive",
             });
             console.log('Server subscription updated:', { 
-              serverId, 
+              serverId: server.id, 
               status: subscription.status 
             });
           }

@@ -21,6 +21,7 @@ export interface IStorage {
   getServersByUserId(userId: number): Promise<Server[]>;
   createServer(server: InsertServer): Promise<Server>;
   updateServer(id: number, server: Partial<Server>): Promise<Server>;
+  getServerBySubscriptionId(subscriptionId: string): Promise<Server | undefined>;
 
   // Tickets
   getTicket(id: number): Promise<Ticket | undefined>;
@@ -85,6 +86,11 @@ export class DatabaseStorage implements IStorage {
       .set(updates)
       .where(eq(servers.id, id))
       .returning();
+    return server;
+  }
+
+  async getServerBySubscriptionId(subscriptionId: string): Promise<Server | undefined> {
+    const [server] = await db.select().from(servers).where(eq(servers.subscriptionId, subscriptionId));
     return server;
   }
 
