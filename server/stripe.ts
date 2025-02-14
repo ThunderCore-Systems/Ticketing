@@ -6,11 +6,18 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 if (!process.env.APP_URL) {
-  throw new Error("APP_URL is required");
+  throw new Error("APP_URL is required for Stripe redirects. It should be your Replit app URL.");
 }
 
-// Ensure APP_URL doesn't have any spaces or trailing slashes
+// Ensure APP_URL doesn't have any trailing slashes and is a valid URL
 const APP_URL = process.env.APP_URL.trim().replace(/\/$/, '');
+
+// Validate APP_URL format
+try {
+  new URL(APP_URL);
+} catch (e) {
+  throw new Error(`Invalid APP_URL: ${APP_URL}. It should be a complete URL like https://your-app.username.repl.co`);
+}
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2025-01-27.acacia",
