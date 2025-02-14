@@ -10,6 +10,7 @@ import Navbar from "@/components/layout/navbar";
 import { useQuery } from "@tanstack/react-query";
 import type { User } from "@shared/schema";
 import { useEffect } from "react";
+import ServerDashboard from "@/pages/server/[id]"; // Added import
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const [location, setLocation] = useLocation();
@@ -66,6 +67,9 @@ function Router() {
           <Route path="/billing">
             <ProtectedRoute component={Billing} />
           </Route>
+          <Route path="/server/:id"> {/* Added route */}
+            <ProtectedRoute component={ServerDashboard} /> {/* Added route */}
+          </Route> {/* Added route */}
           <Route component={NotFound} />
         </Switch>
       </main>
