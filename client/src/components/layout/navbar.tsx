@@ -38,13 +38,6 @@ export default function Navbar() {
                   Dashboard
                 </Button>
               </Link>
-              <Link href="/servers">
-                <Button
-                  variant={isActive("/servers") ? "default" : "ghost"}
-                >
-                  Servers
-                </Button>
-              </Link>
               <Link href="/billing">
                 <Button
                   variant={isActive("/billing") ? "default" : "ghost"}

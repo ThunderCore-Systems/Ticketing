@@ -4,7 +4,6 @@ import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
-import Servers from "@/pages/servers";
 import Billing from "@/pages/billing";
 import NotFound from "@/pages/not-found";
 import Navbar from "@/components/layout/navbar";
@@ -63,9 +62,6 @@ function Router() {
           <Route path="/login" component={Login} />
           <Route path="/dashboard">
             <ProtectedRoute component={Dashboard} />
-          </Route>
-          <Route path="/servers">
-            <ProtectedRoute component={Servers} />
           </Route>
           <Route path="/billing">
             <ProtectedRoute component={Billing} />
