@@ -13,6 +13,14 @@ const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
 const DISCORD_CALLBACK_URL = process.env.DISCORD_CALLBACK_URL!;
 
+// Add authentication middleware
+function requireAuth(req: any, res: any, next: any) {
+  if (!req.user) {
+    return res.status(401).json({ message: 'Not authenticated' });
+  }
+  next();
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
@@ -40,12 +48,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         user = await storage.createUser({
           discordId: profile.id,
           username: profile.username,
-          avatarUrl: profile.avatar,
+          avatarUrl: profile.avatar ? `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.png` : null,
           accessToken,
           refreshToken,
         });
       } else {
         user = await storage.updateUser(user.id, {
+          username: profile.username,
+          avatarUrl: profile.avatar ? `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.png` : null,
           accessToken,
           refreshToken,
         });
@@ -86,22 +96,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(req.user);
   });
 
-  // Server routes
-  app.get('/api/servers', async (req, res) => {
-    if (!req.user) {
-      return res.status(401).json({ message: 'Not authenticated' });
-    }
+  // Protected routes - add requireAuth middleware
+  app.get('/api/servers', requireAuth, async (req, res) => {
     const servers = await storage.getServersByUserId((req.user as any).id);
     res.json(servers);
   });
 
-  // Ticket routes
-  app.get('/api/servers/:serverId/tickets', async (req, res) => {
+  app.get('/api/servers/:serverId/tickets', requireAuth, async (req, res) => {
     const tickets = await storage.getTicketsByServerId(parseInt(req.params.serverId));
     res.json(tickets);
   });
 
-  app.post('/api/servers/:serverId/tickets', async (req, res) => {
+  app.post('/api/servers/:serverId/tickets', requireAuth, async (req, res) => {
     const ticket = await storage.createTicket({
       ...insertTicketSchema.parse(req.body),
       serverId: parseInt(req.params.serverId),
@@ -109,12 +115,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(ticket);
   });
 
-  app.get('/api/tickets/:ticketId/messages', async (req, res) => {
+  app.get('/api/tickets/:ticketId/messages', requireAuth, async (req, res) => {
     const messages = await storage.getMessagesByTicketId(parseInt(req.params.ticketId));
     res.json(messages);
   });
 
-  app.post('/api/tickets/:ticketId/messages', async (req, res) => {
+  app.post('/api/tickets/:ticketId/messages', requireAuth, async (req, res) => {
     const message = await storage.createMessage({
       ...insertMessageSchema.parse(req.body),
       ticketId: parseInt(req.params.ticketId),
@@ -122,11 +128,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(message);
   });
 
-  // Stripe webhook
+  // Stripe webhook - no auth required
   app.post('/api/stripe/webhook', setupStripeWebhooks());
 
-  // Stripe subscription
-  app.post('/api/stripe/create-subscription', async (req, res) => {
+  // Stripe subscription - requires auth
+  app.post('/api/stripe/create-subscription', requireAuth, async (req, res) => {
     try {
       const subscription = await createSubscription(req.body.priceId);
       res.json(subscription);
