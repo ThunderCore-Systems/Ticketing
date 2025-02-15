@@ -128,24 +128,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get('/api/auth/discord', passport.authenticate('discord'));
   app.get('/api/auth/discord/callback',
-    (req, res, next) => {
-      passport.authenticate('discord', (err: any, user: any) => {
-        if (err) {
-          console.error('Discord auth error:', err);
-          return res.redirect('/login?error=' + encodeURIComponent(err.message));
-        }
-        if (!user) {
-          return res.redirect('/login?error=auth_failed');
-        }
-        req.logIn(user, (err) => {
-          if (err) {
-            console.error('Login error:', err);
-            return res.redirect('/login?error=login_failed');
-          }
-          return res.redirect('/dashboard');
-        });
-      })(req, res, next);
-    }
+    passport.authenticate('discord', {
+      failureRedirect: '/login?error=auth_failed',
+      successRedirect: '/dashboard'
+    })
   );
 
   app.post('/api/auth/logout', (req, res) => {
