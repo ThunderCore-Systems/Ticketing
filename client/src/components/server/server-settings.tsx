@@ -5,9 +5,7 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardFooter,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -46,7 +44,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
       });
       toast({
         title: "Settings Updated",
-        description: "Server settings have been updated successfully.",
+        description: "Server settings have been saved.",
       });
     },
     onError: (error: any) => {
@@ -248,14 +246,6 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
             />
           </div>
         </CardContent>
-        <CardFooter>
-          <Button
-            onClick={() => updateSettings.mutate({})}
-            disabled={updateSettings.isPending}
-          >
-            Save Changes
-          </Button>
-        </CardFooter>
       </Card>
     </div>
   );
