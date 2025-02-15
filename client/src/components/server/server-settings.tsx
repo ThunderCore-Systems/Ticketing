@@ -18,11 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Server } from "@shared/schema";
-import { Upload, X } from "lucide-react";
+import { Upload } from "lucide-react";
 
 interface ServerSettingsProps {
   server: Server;
@@ -38,17 +37,9 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
 
   const updateSettings = useMutation({
     mutationFn: async (updates: Partial<Server>) => {
-      try {
-        const res = await apiRequest("PATCH", `/api/servers/${server.id}`, updates);
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.message || 'Failed to update settings');
-        }
-        return data;
-      } catch (error: any) {
-        console.error('Settings update error:', error);
-        throw new Error(error.message || 'Failed to update settings');
-      }
+      const res = await apiRequest("PATCH", `/api/servers/${server.id}`, updates);
+      const data = await res.json();
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -59,7 +50,8 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
         description: "Server settings have been updated successfully.",
       });
     },
-    onError: (error: Error) => {
+    onError: (error: any) => {
+      console.error("Settings update error:", error);
       toast({
         title: "Error",
         description: error.message || "Failed to update server settings. Please try again.",
@@ -83,7 +75,6 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
     }
 
     try {
-      // Convert to base64
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = () => {
@@ -164,7 +155,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
             </Label>
             <Select
               value={server.ticketManagerRoleId || ""}
-              onValueChange={(value) => 
+              onValueChange={(value) =>
                 updateSettings.mutate({ ticketManagerRoleId: value })
               }
             >
