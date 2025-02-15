@@ -11,13 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Server } from "@shared/schema";
@@ -29,11 +22,6 @@ interface ServerSettingsProps {
 
 export default function ServerSettings({ server }: ServerSettingsProps) {
   const { toast } = useToast();
-
-  // Get Discord roles for this server
-  const { data: roles } = useQuery({
-    queryKey: [`/api/servers/${server.discordId}/roles`],
-  });
 
   const updateSettings = useMutation({
     mutationFn: async (updates: Partial<Server>) => {
@@ -146,33 +134,6 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
                 Custom avatar for anonymous support messages
               </p>
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>
-              Ticket Manager Role
-            </Label>
-            <Select
-              value={server.ticketManagerRoleId || ""}
-              onValueChange={(value) =>
-                updateSettings.mutate({ ticketManagerRoleId: value })
-              }
-              disabled={updateSettings.isPending}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select role that can manage tickets" />
-              </SelectTrigger>
-              <SelectContent>
-                {roles?.map((role: any) => (
-                  <SelectItem key={role.id} value={role.id}>
-                    {role.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-sm text-muted-foreground">
-              Members with this role can view all tickets and manage users
-            </p>
           </div>
 
           <div className="flex items-center justify-between">
