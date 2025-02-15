@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import {
   Table,
   TableBody,
@@ -24,6 +24,7 @@ interface TicketListProps {
 }
 
 export default function TicketList({ serverId }: TicketListProps) {
+  const [, setLocation] = useLocation();
   const { data: tickets } = useQuery<Ticket[]>({ 
     queryKey: [`/api/servers/${serverId}/tickets`]
   });
@@ -77,7 +78,7 @@ export default function TicketList({ serverId }: TicketListProps) {
             <TableRow 
               key={ticket.id}
               className="cursor-pointer hover:bg-muted/50"
-              onClick={() => window.location.href = `/tickets/${ticket.id}`}
+              onClick={() => setLocation(`/tickets/${ticket.id}`)}
             >
               <TableCell>#{ticket.number}</TableCell>
               <TableCell>
