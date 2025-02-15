@@ -25,7 +25,7 @@ export const servers = pgTable("servers", {
   claimedByUserId: integer("claimed_by_user_id").references(() => users.id),
   anonymousMode: boolean("anonymous_mode").default(false),
   webhookAvatar: text("webhook_avatar"),
-  ticketManagerRoleId: text("ticket_manager_role_id"),
+  ticketManagerRoleId: text("ticket_manager_role_id"), 
   autoArchive: boolean("auto_archive").default(false),
   activityLogs: boolean("activity_logs").default(false),
   enableStats: boolean("enable_stats").default(false),

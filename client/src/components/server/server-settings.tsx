@@ -38,8 +38,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
   const updateSettings = useMutation({
     mutationFn: async (updates: Partial<Server>) => {
       const res = await apiRequest("PATCH", `/api/servers/${server.id}`, updates);
-      const data = await res.json();
-      return data;
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -158,6 +157,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               onValueChange={(value) =>
                 updateSettings.mutate({ ticketManagerRoleId: value })
               }
+              disabled={updateSettings.isPending}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select role that can manage tickets" />

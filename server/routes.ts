@@ -340,6 +340,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Change the server routes for roles endpoint
   app.get('/api/servers/:serverId/roles', requireAuth, async (req, res) => {
     try {
       const server = await storage.getServer(parseInt(req.params.serverId));
@@ -353,10 +354,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const roles = await getServerRoles(server.discordId);
-      res.json(roles);
+      res.json(roles || []);
     } catch (error) {
       console.error('Error fetching roles:', error);
-      res.status(500).json({ message: 'Failed to fetch roles' });
+      res.status(500).json({ 
+        message: 'Failed to fetch roles',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Update server settings endpoint
+  app.patch('/api/servers/:serverId', requireAuth, async (req, res) => {
+    try {
+      const serverId = parseInt(req.params.serverId);
+      const server = await storage.getServer(serverId);
+
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check access
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      // Update server settings
+      const updatedServer = await storage.updateServer(serverId, req.body);
+      res.json(updatedServer);
+    } catch (error) {
+      console.error('Error updating server:', error);
+      res.status(500).json({
+        message: 'Failed to update server settings',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 
