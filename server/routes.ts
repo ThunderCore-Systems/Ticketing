@@ -369,16 +369,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Not authorized' });
       }
 
-      // Get roles from Discord
+      // Get roles from Discord and return them directly
       const roles = await getServerRoles(server.discordId);
-
-      // Filter out @everyone role and format the response
-      const filteredRoles = roles.filter(role => role.name !== '@everyone').map(role => ({
-        id: role.id,
-        name: role.name,
-      }));
-
-      res.json(filteredRoles || []);
+      res.json(roles.filter(role => role.name !== '@everyone'));
     } catch (error) {
       console.error('Error fetching roles:', error);
       res.status(500).json({ 
@@ -452,7 +445,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Add entries for all roles that could handle tickets
       supportRoleIds.forEach(roleId => {
-        const roleName = roleMap.get(roleId) || 'Unknown Role';
+        const roleName = roleMap.get(roleId) || roleId;
         const roleType = roleId === server.ticketManagerRoleId ? 'manager' : 'support';
 
         supportMembers.set(roleId, {
