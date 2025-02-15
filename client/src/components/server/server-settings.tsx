@@ -10,9 +10,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Server } from "@shared/schema";
+import { Upload } from "lucide-react";
 
 interface ServerSettingsProps {
   server: Server;
@@ -44,6 +46,19 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
     },
   });
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string;
+      updateSettings.mutate({ webhookAvatar: base64 });
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <div className="space-y-6">
       <Card>
@@ -56,26 +71,56 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <label className="text-sm font-medium">
+              <Label>
                 Anonymous Support Mode
-              </label>
+              </Label>
               <p className="text-sm text-muted-foreground">
                 When enabled, support team messages will appear as "Support Team" instead of individual usernames
               </p>
             </div>
             <Switch 
-              checked={server.anonymousMode || false}
+              checked={server.anonymousMode}
               onCheckedChange={(checked) => 
                 updateSettings.mutate({ anonymousMode: checked })
               }
             />
           </div>
 
+          <div className="space-y-2">
+            <Label>Support Team Avatar</Label>
+            <div className="flex items-center gap-4">
+              {server.webhookAvatar && (
+                <img 
+                  src={server.webhookAvatar} 
+                  alt="Webhook Avatar" 
+                  className="w-12 h-12 rounded-full"
+                />
+              )}
+              <Input
+                type="file"
+                accept="image/*"
+                id="avatar-upload"
+                className="hidden"
+                onChange={handleAvatarUpload}
+              />
+              <Button
+                variant="outline"
+                onClick={() => document.getElementById('avatar-upload')?.click()}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Upload Avatar
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                Custom avatar for anonymous support messages. Your Discord avatar will be used in non-anonymous mode.
+              </p>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <label className="text-sm font-medium">
+              <Label>
                 Automatic Ticket Archiving
-              </label>
+              </Label>
               <p className="text-sm text-muted-foreground">
                 Automatically archive tickets after they've been closed for 7 days
               </p>
@@ -94,9 +139,9 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">
+            <Label>
               Support Team Role ID
-            </label>
+            </Label>
             <Input
               placeholder="Enter Discord role ID for support team"
               value={server.supportRoleId || ""}

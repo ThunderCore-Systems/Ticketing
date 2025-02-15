@@ -201,7 +201,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ticket.channelId!,
           message.content,
           (req.user as any).username,
-          server.anonymousMode
+          server.anonymousMode,
+          server.webhookAvatar,
+          (req.user as any).avatarUrl
         );
       }
 

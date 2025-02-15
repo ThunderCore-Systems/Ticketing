@@ -487,12 +487,14 @@ export async function closeTicketChannel(channelId: string) {
   }
 }
 
-// Add this function near the end of the file
+// Updated sendWebhookMessage function
 export async function sendWebhookMessage(
   channelId: string,
   content: string,
   username: string,
-  anonymousMode: boolean = false
+  anonymousMode: boolean = false,
+  webhookAvatar?: string | null,
+  userAvatarUrl?: string | null
 ) {
   if (!client) {
     console.error('Discord bot is not initialized');
@@ -511,13 +513,18 @@ export async function sendWebhookMessage(
     if (!webhook) {
       webhook = await channel.createWebhook({
         name: 'Ticket System',
-        avatar: 'https://i.imgur.com/AfFp7pu.png', // Replace with your bot's avatar
+        avatar: anonymousMode && webhookAvatar ? webhookAvatar : undefined,
+      });
+    } else if (anonymousMode && webhookAvatar) {
+      await webhook.edit({
+        avatar: webhookAvatar
       });
     }
 
     await webhook.send({
       content,
       username: anonymousMode ? 'Support Team' : `${username} (Support Team)`,
+      avatarURL: anonymousMode ? undefined : userAvatarUrl || undefined,
     });
   } catch (error) {
     console.error('Error sending webhook message:', error);
