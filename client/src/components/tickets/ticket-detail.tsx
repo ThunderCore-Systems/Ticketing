@@ -21,7 +21,11 @@ import {
   UnlockKeyhole, 
   Inbox,
   Users,
-  AlertCircle
+  AlertCircle,
+  Download,
+  Ban,
+  Clock,
+  Shield
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Ticket, Message, User, Panel } from "@shared/schema";
@@ -58,6 +62,12 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
     queryKey: [`/api/panels/${ticket?.panelId}`],
     enabled: !!ticket?.panelId,
     retry: 2,
+  });
+
+  // Get ticket creator details
+  const { data: ticketCreator } = useQuery<User>({
+    queryKey: [`/api/users/${ticket?.userId}`],
+    enabled: !!ticket?.userId,
   });
 
   const sendMessage = useMutation({
@@ -117,6 +127,32 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
       toast({
         title: "Ticket claimed",
         description: "You have claimed this ticket.",
+      });
+    },
+  });
+
+  const saveTranscript = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/tickets/${ticketId}/transcript`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Transcript saved",
+        description: "Ticket transcript has been saved and sent to the configured channel.",
+      });
+    },
+  });
+
+  const banUser = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/tickets/${ticketId}/ban-user`);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "User banned",
+        description: "The user has been banned from creating new tickets.",
       });
     },
   });
@@ -197,6 +233,15 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
                 </>
               )}
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => saveTranscript.mutate()}
+              className="gap-1"
+            >
+              <Download className="h-4 w-4" />
+              Save Transcript
+            </Button>
           </div>
         </CardHeader>
       </Card>
@@ -268,28 +313,80 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Users className="h-5 w-5" />
-                Participants
+                User Information
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Created By</h4>
-                  <div className="flex items-center gap-2">
-                    <UserCircle2 className="h-4 w-4" />
-                    <span>{ticket.userId}</span>
-                  </div>
-                </div>
+                {ticketCreator && (
+                  <>
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Discord Profile</h4>
+                      <div className="flex items-center gap-3">
+                        {ticketCreator.avatarUrl && (
+                          <img 
+                            src={ticketCreator.avatarUrl} 
+                            alt={ticketCreator.username}
+                            className="w-10 h-10 rounded-full"
+                          />
+                        )}
+                        <div>
+                          <p className="font-medium">{ticketCreator.username}</p>
+                          <p className="text-sm text-muted-foreground">ID: {ticketCreator.discordId}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => banUser.mutate()}
+                        className="gap-1"
+                      >
+                        <Ban className="h-4 w-4" />
+                        Ban User
+                      </Button>
+                      {/* Add more user management buttons here */}
+                    </div>
+                  </>
+                )}
+
                 {ticket.claimedBy && (
                   <div>
                     <h4 className="text-sm font-medium mb-2">Claimed By</h4>
                     <div className="flex items-center gap-2">
-                      <UserCircle2 className="h-4 w-4" />
+                      <Shield className="h-4 w-4" />
                       <span>{ticket.claimedBy}</span>
                     </div>
                   </div>
                 )}
-                {panel && (
+
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Time Open</h4>
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    <span>{format(new Date(ticket.createdAt || Date.now()), "PPpp")}</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {panel && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5" />
+                  Panel Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Panel Name</h4>
+                    <p>{panel.title}</p>
+                  </div>
                   <div>
                     <h4 className="text-sm font-medium mb-2">Support Team</h4>
                     <div className="flex flex-wrap gap-2">
@@ -300,37 +397,18 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
                       ))}
                     </div>
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <AlertCircle className="h-5 w-5" />
-                Ticket Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {panel && (
-                  <div>
-                    <h4 className="text-sm font-medium mb-2">Panel</h4>
-                    <p>{panel.title}</p>
-                  </div>
-                )}
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Ticket Number</h4>
-                  <p>#{ticket.number}</p>
+                  {panel.transcriptChannelId && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Transcript Channel</h4>
+                      <Badge variant="outline">
+                        #{panel.transcriptChannelId}
+                      </Badge>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Created</h4>
-                  <p>{format(new Date(ticket.createdAt || Date.now()), "PPpp")}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>

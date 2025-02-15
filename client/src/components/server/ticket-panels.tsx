@@ -43,6 +43,7 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
   const [description, setDescription] = useState("");
   const [channelId, setChannelId] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [transcriptChannelId, setTranscriptChannelId] = useState("");
   const [selectedRoleId, setSelectedRoleId] = useState("");
   const [supportRoleIds, setSupportRoleIds] = useState<string[]>([]);
   const [prefix, setPrefix] = useState("");
@@ -70,7 +71,7 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
   const updatePanel = useMutation({
     mutationFn: async (panelId: number) => {
       const res = await apiRequest(
-        "PATCH", 
+        "PATCH",
         `/api/servers/${serverId}/panels/${panelId}`,
         {
           title,
@@ -79,6 +80,7 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
           categoryId,
           supportRoleIds,
           prefix: prefix.toUpperCase(),
+          transcriptChannelId,
         }
       );
       return res.json();
@@ -163,6 +165,7 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
         categoryId,
         supportRoleIds,
         prefix: prefix.toUpperCase(),
+        transcriptChannelId,
       });
       return res.json();
     },
@@ -192,6 +195,7 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
     setCategoryId(panel.categoryId);
     setSupportRoleIds(panel.supportRoleIds);
     setPrefix(panel.prefix);
+    setTranscriptChannelId(panel.transcriptChannelId || "");
     setEditingPanel(panel.id);
   };
 
@@ -208,7 +212,7 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
   };
 
   const handleRemoveRole = (roleId: string) => {
-    setSupportRoleIds(supportRoleIds.filter(id => id !== roleId));
+    setSupportRoleIds(supportRoleIds.filter((id) => id !== roleId));
   };
 
   const resetForm = () => {
@@ -218,14 +222,25 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
     setCategoryId("");
     setSupportRoleIds([]);
     setPrefix("");
+    setTranscriptChannelId("");
     setEditingPanel(null);
   };
 
   const handleSubmit = () => {
+    const panelData = {
+      title,
+      description,
+      channelId,
+      categoryId,
+      supportRoleIds,
+      prefix: prefix.toUpperCase(),
+      transcriptChannelId: transcriptChannelId || null,
+    };
+
     if (editingPanel) {
       updatePanel.mutate(editingPanel);
     } else {
-      createPanel.mutate();
+      createPanel.mutate(panelData);
     }
   };
 
@@ -233,15 +248,16 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>{editingPanel ? "Edit Ticket Panel" : "Create Ticket Panel"}</CardTitle>
+          <CardTitle>
+            {editingPanel ? "Edit Ticket Panel" : "Create Ticket Panel"}
+          </CardTitle>
           <CardDescription>
-            {editingPanel 
+            {editingPanel
               ? "Edit an existing ticket panel"
               : "Create a new ticket panel that will be displayed in your Discord server"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Existing form fields */}
           <div className="space-y-2">
             <label htmlFor="title" className="text-sm font-medium">
               Panel Title
@@ -278,7 +294,29 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
               className="uppercase"
             />
             <p className="text-sm text-muted-foreground">
-              This will be used to generate ticket numbers like {prefix ? `${prefix}-001` : "PREFIX-001"}
+              This will be used to generate ticket numbers like{" "}
+              {prefix ? `${prefix}-001` : "PREFIX-001"}
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Transcript Channel
+            </label>
+            <Select value={transcriptChannelId} onValueChange={setTranscriptChannelId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select channel for ticket transcripts" />
+              </SelectTrigger>
+              <SelectContent>
+                {channels?.map((channel) => (
+                  <SelectItem key={channel.id} value={channel.id}>
+                    #{channel.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              Channel where ticket transcripts will be saved when a ticket is closed
             </p>
           </div>
 
@@ -335,8 +373,8 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
                   ))}
                 </SelectContent>
               </Select>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="icon"
                 onClick={handleAddRole}
                 disabled={!selectedRoleId}
@@ -345,8 +383,8 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
               </Button>
             </div>
             <div className="flex flex-wrap gap-2 mt-2">
-              {supportRoleIds.map(roleId => {
-                const role = roles?.find(r => r.id === roleId);
+              {supportRoleIds.map((roleId) => {
+                const role = roles?.find((r) => r.id === roleId);
                 return (
                   <Badge key={roleId} variant="secondary" className="flex items-center gap-1">
                     @{role?.name}
@@ -366,24 +404,22 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
           <Button
             onClick={handleSubmit}
             disabled={
-              !title || 
-              !description || 
-              !channelId || 
-              !categoryId || 
-              supportRoleIds.length === 0 || 
-              !prefix || 
-              createPanel.isPending || 
-              updatePanel.isPending
+              !title ||
+              !description ||
+              !channelId ||
+              !categoryId ||
+              supportRoleIds.length === 0 ||
+              !prefix ||
+              createPanel.isPending ||
+              updatePanel.isPending ||
+              !transcriptChannelId
             }
           >
             <PlusCircle className="mr-2 h-4 w-4" />
             {editingPanel ? "Update Panel" : "Create Panel"}
           </Button>
           {editingPanel && (
-            <Button
-              variant="outline"
-              onClick={resetForm}
-            >
+            <Button variant="outline" onClick={resetForm}>
               Cancel
             </Button>
           )}
@@ -400,13 +436,19 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
             <CardContent>
               <div className="space-y-2 text-sm">
                 <p>Prefix: {panel.prefix}</p>
-                <p>Channel: #{channels?.find(c => c.id === panel.channelId)?.name}</p>
-                <p>Category: {categories?.find(c => c.id === panel.categoryId)?.name}</p>
+                <p>Channel: #{channels?.find((c) => c.id === panel.channelId)?.name}</p>
+                <p>Category: {categories?.find((c) => c.id === panel.categoryId)?.name}</p>
+                {panel.transcriptChannelId && (
+                  <p>
+                    Transcript Channel:{" "}
+                    #{channels?.find((c) => c.id === panel.transcriptChannelId)?.name}
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <span>Support Roles:</span>
-                  {panel.supportRoleIds.map(roleId => (
+                  {panel.supportRoleIds.map((roleId) => (
                     <Badge key={roleId} variant="secondary">
-                      @{roles?.find(r => r.id === roleId)?.name}
+                      @{roles?.find((r) => r.id === roleId)?.name}
                     </Badge>
                   ))}
                 </div>

@@ -1,7 +1,7 @@
-import { 
-  Client, 
-  GatewayIntentBits, 
-  TextChannel, 
+import {
+  Client,
+  GatewayIntentBits,
+  TextChannel,
   CategoryChannel,
   ApplicationCommandType,
   ApplicationCommandOptionType,
@@ -13,7 +13,8 @@ import {
   EmbedBuilder,
   ChannelType,
   type ChatInputCommandInteraction,
-  type ButtonInteraction
+  type ButtonInteraction,
+  AttachmentBuilder
 } from "discord.js";
 import type { Server } from "http";
 import { storage } from "./storage";
@@ -118,10 +119,16 @@ async function handleButtonInteraction(interaction: ButtonInteraction) {
         await createTicketChannel(interaction, panel);
         break;
       case 'close':
-        await closeTicket(interaction, idStr);
+        await closeTicket(interaction, id);
         break;
       case 'claim':
-        await claimTicket(interaction, idStr);
+        await claimTicket(interaction, id);
+        break;
+      case 'transcript':
+        await saveTranscript(interaction, id);
+        break;
+      case 'delete':
+        await deleteTicketChannel(interaction, id);
         break;
     }
   } catch (error) {
@@ -229,13 +236,13 @@ export async function createTicketPanel(
   guildId: string,
   channelId: string,
   panel: {
-    id: number; 
+    id: number;
     title: string;
     description: string;
     prefix: string;
     categoryId: string;
     supportRoleIds: string[];
-    serverId: number; 
+    serverId: number;
   }
 ) {
   if (!client) throw new Error('Discord bot is not initialized');
@@ -255,13 +262,13 @@ export async function createTicketPanel(
       .setTitle(panel.title)
       .setDescription(panel.description)
       .addFields(
-        { 
-          name: 'Support Team', 
+        {
+          name: 'Support Team',
           value: rolesMention || 'No support roles assigned'
         },
-        { 
-          name: 'Ticket Format', 
-          value: `${panel.prefix}-NUMBER` 
+        {
+          name: 'Ticket Format',
+          value: `${panel.prefix}-NUMBER`
         }
       )
       .setColor(0x0099ff);
@@ -269,7 +276,7 @@ export async function createTicketPanel(
     const button = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
         new ButtonBuilder()
-          .setCustomId(`ticket_create_${panel.id}`) 
+          .setCustomId(`ticket_create_${panel.id}`)
           .setLabel('Create Ticket')
           .setStyle(ButtonStyle.Primary)
       );
@@ -341,9 +348,9 @@ async function getNextTicketNumber(prefix: string): Promise<number> {
   return maxNumber + 1;
 }
 
-async function closeTicket(interaction: ButtonInteraction, ticketId: string) {
+async function closeTicket(interaction: ButtonInteraction, ticketId: number) {
   try {
-    const ticket = await storage.getTicket(parseInt(ticketId));
+    const ticket = await storage.getTicket(ticketId);
     if (!ticket) {
       await interaction.reply({
         content: 'This ticket no longer exists.',
@@ -354,15 +361,43 @@ async function closeTicket(interaction: ButtonInteraction, ticketId: string) {
 
     await storage.updateTicket(ticket.id, {
       status: 'closed',
+      closedBy: interaction.user.id,
+      closedAt: new Date(),
     });
 
     const channel = interaction.channel as TextChannel;
+
+    // Create support team control panel
+    const controlPanel = new EmbedBuilder()
+      .setTitle('Ticket Controls')
+      .setDescription('This ticket has been closed. Use the buttons below to manage the ticket.')
+      .setColor(0xFF0000)
+      .addFields(
+        { name: 'Closed By', value: `<@${interaction.user.id}>`, inline: true },
+        { name: 'Closed At', value: new Date().toLocaleString(), inline: true }
+      );
+
+    const buttons = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(`ticket_transcript_${ticket.id}`)
+          .setLabel('Save Transcript')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`ticket_delete_${ticket.id}`)
+          .setLabel('Delete Channel')
+          .setStyle(ButtonStyle.Danger)
+      );
+
     await channel.send({
-      content: `Ticket closed by <@${interaction.user.id}>`,
+      embeds: [controlPanel],
+      components: [buttons],
     });
 
-    // Archive the channel
-    await channel.setArchived(true);
+    // Remove user's access to the channel
+    await channel.permissionOverwrites.edit(ticket.userId, {
+      ViewChannel: false,
+    });
 
     await interaction.reply({
       content: 'Ticket has been closed.',
@@ -436,7 +471,7 @@ async function handleTicketCommand(interaction: ChatInputCommandInteraction) {
 
     const ticket = await storage.createTicket({
       serverId: server.id,
-      userId: null, 
+      userId: null,
       title,
       status: "open",
     });
@@ -530,4 +565,116 @@ export async function sendWebhookMessage(
     console.error('Error sending webhook message:', error);
     throw error;
   }
+}
+
+async function saveTranscript(interaction: ButtonInteraction, ticketId: number) {
+  try {
+    const ticket = await storage.getTicket(ticketId);
+    if (!ticket) {
+      await interaction.reply({
+        content: 'This ticket no longer exists.',
+        ephemeral: true
+      });
+      return;
+    }
+
+    const panel = await storage.getPanel(ticket.panelId);
+    if (!panel || !panel.transcriptChannelId) {
+      await interaction.reply({
+        content: 'No transcript channel configured for this panel.',
+        ephemeral: true
+      });
+      return;
+    }
+
+    const messages = await storage.getMessagesByTicketId(ticketId);
+    const channel = interaction.channel as TextChannel;
+
+    // Generate transcript
+    let transcript = `Ticket Transcript - #${ticket.number}\n`;
+    transcript += `Created: ${new Date(ticket.createdAt || Date.now()).toLocaleString()}\n`;
+    transcript += `Status: ${ticket.status}\n\n`;
+
+    messages.forEach(msg => {
+      transcript += `[${new Date(msg.createdAt || Date.now()).toLocaleString()}] ${msg.userId}: ${msg.content}\n`;
+    });
+
+    const transcriptBuffer = Buffer.from(transcript, 'utf-8');
+    const transcriptAttachment = new AttachmentBuilder(
+      transcriptBuffer,
+      { name: `ticket-${ticket.number}-transcript.txt` }
+    );
+
+    // Send to transcript channel
+    const transcriptChannel = await client?.channels.fetch(panel.transcriptChannelId) as TextChannel;
+    if (transcriptChannel) {
+      const transcriptEmbed = new EmbedBuilder()
+        .setTitle(`Ticket #${ticket.number} Transcript`)
+        .setDescription(`Transcript from ${panel.title}`)
+        .addFields(
+          { name: 'Created By', value: `<@${ticket.userId}>`, inline: true },
+          { name: 'Closed By', value: `<@${ticket.closedBy}>`, inline: true },
+          { name: 'Duration', value: formatDuration(ticket.createdAt, ticket.closedAt), inline: true }
+        )
+        .setColor(0x00FF00)
+        .setTimestamp();
+
+      await transcriptChannel.send({
+        embeds: [transcriptEmbed],
+        files: [transcriptAttachment],
+      });
+
+      await interaction.reply({
+        content: `Transcript has been saved to ${transcriptChannel}.`,
+        ephemeral: true
+      });
+    }
+  } catch (error) {
+    console.error('Error saving transcript:', error);
+    await interaction.reply({
+      content: 'Failed to save transcript. Please try again.',
+      ephemeral: true
+    });
+  }
+}
+
+async function deleteTicketChannel(interaction: ButtonInteraction, ticketId: number) {
+  try {
+    const ticket = await storage.getTicket(ticketId);
+    if (!ticket) {
+      await interaction.reply({
+        content: 'This ticket no longer exists.',
+        ephemeral: true
+      });
+      return;
+    }
+
+    const channel = interaction.channel as TextChannel;
+    await channel.delete();
+
+    // Update ticket in database
+    await storage.updateTicket(ticket.id, {
+      channelId: null,
+      deletedAt: new Date(),
+    });
+  } catch (error) {
+    console.error('Error deleting ticket channel:', error);
+    await interaction.reply({
+      content: 'Failed to delete channel. Please try again.',
+      ephemeral: true
+    });
+  }
+}
+
+function formatDuration(start?: Date | null, end?: Date | null): string {
+  if (!start || !end) return 'Unknown';
+
+  const duration = end.getTime() - start.getTime();
+  const days = Math.floor(duration / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((duration % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((duration % (1000 * 60 * 60)) / (1000 * 60));
+
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }

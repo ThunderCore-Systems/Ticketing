@@ -23,6 +23,8 @@ export const servers = pgTable("servers", {
   subscriptionId: text("subscription_id"),
   subscriptionStatus: text("subscription_status"),
   claimedByUserId: integer("claimed_by_user_id").references(() => users.id),
+  anonymousMode: boolean("anonymous_mode").default(false),
+  webhookAvatar: text("webhook_avatar"),
 });
 
 export const panels = pgTable("panels", {
@@ -32,21 +34,23 @@ export const panels = pgTable("panels", {
   description: text("description").notNull(),
   channelId: text("channel_id").notNull(),
   categoryId: text("category_id").notNull(),
-  supportRoleIds: text("support_role_ids").array().notNull(), // Changed to array
+  supportRoleIds: text("support_role_ids").array().notNull(),
   prefix: text("prefix").notNull(),
+  transcriptChannelId: text("transcript_channel_id"),
 });
 
-// Remove user_id reference and make it text type since it will store Discord user IDs
 export const tickets = pgTable("tickets", {
   id: serial("id").primaryKey(),
   serverId: integer("server_id").references(() => servers.id),
   panelId: integer("panel_id").references(() => panels.id),
-  userId: text("user_id").notNull(), // Discord user ID
+  userId: text("user_id").notNull(),
   channelId: text("channel_id"),
   number: integer("number").notNull(),
   status: text("status").notNull().default("open"),
   claimedBy: text("claimed_by"),
   createdAt: timestamp("created_at").defaultNow(),
+  closedAt: timestamp("closed_at"),
+  closedBy: text("closed_by"),
 });
 
 export const messages = pgTable("messages", {
@@ -57,6 +61,7 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Relations definitions remain unchanged
 export const userRelations = relations(users, ({ many }) => ({
   servers: many(servers),
   messages: many(messages),
@@ -100,12 +105,14 @@ export const messageRelations = relations(messages, ({ one }) => ({
   }),
 }));
 
+// Update insert schemas to include new fields
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertServerSchema = createInsertSchema(servers).omit({ id: true });
 export const insertPanelSchema = createInsertSchema(panels).omit({ id: true });
-export const insertTicketSchema = createInsertSchema(tickets).omit({ id: true, createdAt: true });
+export const insertTicketSchema = createInsertSchema(tickets).omit({ id: true, createdAt: true, closedAt: true });
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 
+// Export types
 export type User = typeof users.$inferSelect;
 export type Server = typeof servers.$inferSelect;
 export type Panel = typeof panels.$inferSelect;
