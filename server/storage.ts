@@ -1,5 +1,5 @@
 import { 
-  users, servers, tickets, panels,
+  users, servers, tickets, panels, panelGroups,
   type User, type InsertUser, 
   type Server, type InsertServer,
   type Ticket, type InsertTicket,
