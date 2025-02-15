@@ -19,7 +19,7 @@ import type { DiscordGuild, TicketMessage } from "./types";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
-const DISCORD_CALLBACK_URL = `${process.env.APP_URL}/api/auth/discord/callback`;
+const DISCORD_CALLBACK_URL = 'https://ad7a4acc-d2b0-41d3-9fcb-5265de129fe6-00-h99bmtj9jxc4.spock.replit.dev/api/auth/discord/callback';
 
 // Add authentication middleware
 function requireAuth(req: any, res: any, next: any) {
