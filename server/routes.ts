@@ -19,7 +19,7 @@ import type { DiscordGuild, TicketMessage } from "./types";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
-const DISCORD_CALLBACK_URL = process.env.DISCORD_CALLBACK_URL!;
+const DISCORD_CALLBACK_URL = `${process.env.APP_URL}/api/auth/discord/callback`;
 
 // Add authentication middleware
 function requireAuth(req: any, res: any, next: any) {
@@ -52,16 +52,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
   // Session setup
-  app.use(session({
+  const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || "dev-secret",
     resave: false,
     saveUninitialized: false,
-  }));
+    cookie: {
+      secure: true,
+      sameSite: 'none'
+    }
+  };
 
+  app.set("trust proxy", 1);
+  app.use(session(sessionSettings));
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Discord OAuth
+  // Discord OAuth strategy with improved error handling
   passport.use(new DiscordStrategy({
     clientID: DISCORD_CLIENT_ID,
     clientSecret: DISCORD_CLIENT_SECRET,
@@ -69,6 +75,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     scope: ['identify', 'guilds', 'email']
   }, async (accessToken, refreshToken, profile: any, done) => {
     try {
+      console.log('Discord auth callback received:', { 
+        userId: profile.id,
+        username: profile.username,
+        guilds: profile.guilds?.length
+      });
+
       let user = await storage.getUserByDiscordId(profile.id);
 
       if (!user) {
@@ -89,10 +101,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Register user's servers
-      await registerUserServers(user.id, profile.guilds);
+      if (profile.guilds) {
+        await registerUserServers(user.id, profile.guilds);
+      }
 
       done(null, user);
     } catch (error) {
+      console.error('Error in Discord auth:', error);
       done(error as Error);
     }
   }));
@@ -113,10 +128,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get('/api/auth/discord', passport.authenticate('discord'));
   app.get('/api/auth/discord/callback',
-    passport.authenticate('discord', {
-      failureRedirect: '/login?error=auth_failed',
-      successRedirect: '/dashboard'
-    })
+    (req, res, next) => {
+      passport.authenticate('discord', (err: any, user: any) => {
+        if (err) {
+          console.error('Discord auth error:', err);
+          return res.redirect('/login?error=' + encodeURIComponent(err.message));
+        }
+        if (!user) {
+          return res.redirect('/login?error=auth_failed');
+        }
+        req.logIn(user, (err) => {
+          if (err) {
+            console.error('Login error:', err);
+            return res.redirect('/login?error=login_failed');
+          }
+          return res.redirect('/dashboard');
+        });
+      })(req, res, next);
+    }
   );
 
   app.post('/api/auth/logout', (req, res) => {
