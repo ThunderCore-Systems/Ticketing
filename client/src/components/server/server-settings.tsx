@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Card,
   CardContent,
@@ -11,10 +11,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Server } from "@shared/schema";
-import { Upload } from "lucide-react";
+import { Upload, X } from "lucide-react";
 
 interface ServerSettingsProps {
   server: Server;
@@ -23,9 +31,18 @@ interface ServerSettingsProps {
 export default function ServerSettings({ server }: ServerSettingsProps) {
   const { toast } = useToast();
 
+  // Fetch Discord roles for this server
+  const { data: roles } = useQuery({
+    queryKey: [`/api/servers/${server.discordId}/roles`],
+  });
+
   const updateSettings = useMutation({
     mutationFn: async (updates: Partial<Server>) => {
       const res = await apiRequest("PATCH", `/api/servers/${server.id}`, updates);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to update settings');
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -37,10 +54,10 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
         description: "Server settings have been updated successfully.",
       });
     },
-    onError: () => {
+    onError: (error) => {
       toast({
         title: "Error",
-        description: "Failed to update server settings. Please try again.",
+        description: error.message || "Failed to update server settings. Please try again.",
         variant: "destructive",
       });
     },
@@ -50,13 +67,31 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Convert to base64
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const base64 = event.target?.result as string;
-      updateSettings.mutate({ webhookAvatar: base64 });
-    };
-    reader.readAsDataURL(file);
+    // Max size 1MB
+    if (file.size > 1024 * 1024) {
+      toast({
+        title: "Error",
+        description: "Avatar must be less than 1MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Convert to base64
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        const base64 = event.target?.result as string;
+        updateSettings.mutate({ webhookAvatar: base64 });
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to upload avatar. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -106,6 +141,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               <Button
                 variant="outline"
                 onClick={() => document.getElementById('avatar-upload')?.click()}
+                disabled={updateSettings.isPending}
               >
                 <Upload className="w-4 h-4 mr-2" />
                 Upload Avatar
@@ -118,17 +154,27 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
 
           <div className="space-y-2">
             <Label>
-              Ticket Manager Role
+              Ticket Manager Roles
             </Label>
-            <Input
-              placeholder="Enter Discord role ID for ticket managers"
+            <Select
               value={server.ticketManagerRoleId || ""}
-              onChange={(e) =>
-                updateSettings.mutate({ ticketManagerRoleId: e.target.value })
+              onValueChange={(value) => 
+                updateSettings.mutate({ ticketManagerRoleId: value })
               }
-            />
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select roles that can manage tickets" />
+              </SelectTrigger>
+              <SelectContent>
+                {roles?.map((role) => (
+                  <SelectItem key={role.id} value={role.id}>
+                    {role.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <p className="text-sm text-muted-foreground">
-              Members with this role can view all tickets and manage users
+              Members with these roles can view all tickets and manage users
             </p>
           </div>
 
@@ -146,6 +192,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               onCheckedChange={(checked) =>
                 updateSettings.mutate({ autoArchive: checked })
               }
+              disabled={updateSettings.isPending}
             />
           </div>
 
@@ -163,6 +210,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               onCheckedChange={(checked) =>
                 updateSettings.mutate({ activityLogs: checked })
               }
+              disabled={updateSettings.isPending}
             />
           </div>
 
@@ -180,6 +228,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               onCheckedChange={(checked) =>
                 updateSettings.mutate({ enableStats: checked })
               }
+              disabled={updateSettings.isPending}
             />
           </div>
 
@@ -197,6 +246,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               onCheckedChange={(checked) =>
                 updateSettings.mutate({ enableTeamStats: checked })
               }
+              disabled={updateSettings.isPending}
             />
           </div>
         </CardContent>
