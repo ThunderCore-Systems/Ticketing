@@ -93,10 +93,19 @@ export async function setupDiscordBot(server: Server) {
 async function handleButtonInteraction(interaction: ButtonInteraction) {
   if (!interaction.customId.startsWith('ticket_')) return;
 
-  const [action, panelId, ...args] = interaction.customId.split('_');
+  const [, action, panelIdStr] = interaction.customId.split('_');
+  const panelId = parseInt(panelIdStr);
+
+  if (isNaN(panelId)) {
+    await interaction.reply({
+      content: 'Invalid ticket panel configuration.',
+      ephemeral: true
+    });
+    return;
+  }
 
   try {
-    const panel = await storage.getPanel(parseInt(panelId));
+    const panel = await storage.getPanel(panelId);
     if (!panel) {
       await interaction.reply({
         content: 'This ticket panel no longer exists.',
@@ -110,10 +119,10 @@ async function handleButtonInteraction(interaction: ButtonInteraction) {
         await createTicketChannel(interaction, panel);
         break;
       case 'close':
-        await closeTicket(interaction, args[0]);
+        await closeTicket(interaction, panelIdStr);
         break;
       case 'claim':
-        await claimTicket(interaction, args[0]);
+        await claimTicket(interaction, panelIdStr);
         break;
     }
   } catch (error) {
@@ -130,6 +139,7 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
     const ticketNumber = await getNextTicketNumber(panel.prefix);
     const ticketName = `${panel.prefix}-${ticketNumber}`;
 
+    // Create channel with proper permissions
     const channel = await interaction.guild?.channels.create({
       name: ticketName.toLowerCase(),
       type: ChannelType.GuildText,
@@ -143,63 +153,70 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
           id: interaction.user.id,
           allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'],
         },
-        ...panel.supportRoleIds.map(roleId => ({ 
+        ...panel.supportRoleIds.map((roleId: string) => ({
           id: roleId,
-          allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'],
+          allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory', 'ManageMessages'],
         })),
       ],
     });
 
-    if (channel) {
-      const ticket = await storage.createTicket({
-        serverId: panel.serverId,
-        panelId: panel.id,
-        channelId: channel.id,
-        userId: interaction.user.id,
-        number: ticketNumber,
-        status: 'open',
-      });
-
-      const embed = new EmbedBuilder()
-        .setTitle(`Ticket: ${ticketName}`)
-        .setDescription('Support ticket created')
-        .addFields(
-          { name: 'Created by', value: `<@${interaction.user.id}>` },
-          { 
-            name: 'Support Team', 
-            value: panel.supportRoleIds.map(id => `<@&${id}>`).join(', ') 
-          }
-        )
-        .setColor(0x00ff00);
-
-      const buttons = new ActionRowBuilder<ButtonBuilder>()
-        .addComponents(
-          new ButtonBuilder()
-            .setCustomId(`ticket_claim_${ticket.id}`)
-            .setLabel('Claim Ticket')
-            .setStyle(ButtonStyle.Primary),
-          new ButtonBuilder()
-            .setCustomId(`ticket_close_${ticket.id}`)
-            .setLabel('Close Ticket')
-            .setStyle(ButtonStyle.Danger)
-        );
-
-      const mentions = [
-        `<@${interaction.user.id}>`,
-        ...panel.supportRoleIds.map(id => `<@&${id}>`)
-      ].join(' ');
-
-      await channel.send({
-        content: mentions,
-        embeds: [embed],
-        components: [buttons],
-      });
-
-      await interaction.reply({
-        content: `Ticket created! Check ${channel}`,
-        ephemeral: true
-      });
+    if (!channel) {
+      throw new Error('Failed to create ticket channel');
     }
+
+    // Create ticket in database
+    const ticket = await storage.createTicket({
+      serverId: panel.serverId,
+      panelId: panel.id,
+      channelId: channel.id,
+      userId: interaction.user.id,
+      number: ticketNumber,
+      status: 'open',
+      claimedBy: null,
+    });
+
+    // Create welcome embed
+    const welcomeEmbed = new EmbedBuilder()
+      .setTitle(`Welcome to Ticket: ${ticketName}`)
+      .setDescription(`Hello ${interaction.user}, welcome to your ticket.\nOur support team will be with you shortly.`)
+      .addFields(
+        { name: 'Created by', value: `<@${interaction.user.id}>`, inline: true },
+        { name: 'Support Team', value: panel.supportRoleIds.map((id: string) => `<@&${id}>`).join(', '), inline: true }
+      )
+      .setColor(0x00ff00)
+      .setTimestamp();
+
+    // Create ticket management buttons
+    const buttons = new ActionRowBuilder<ButtonBuilder>()
+      .addComponents(
+        new ButtonBuilder()
+          .setCustomId(`ticket_claim_${ticket.id}`)
+          .setLabel('Claim Ticket')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`ticket_close_${ticket.id}`)
+          .setLabel('Close Ticket')
+          .setStyle(ButtonStyle.Danger)
+      );
+
+    // Mention all relevant roles and the user
+    const mentions = [
+      `<@${interaction.user.id}>`,
+      ...panel.supportRoleIds.map((id: string) => `<@&${id}>`)
+    ].join(' ');
+
+    // Send the initial message
+    await channel.send({
+      content: mentions,
+      embeds: [welcomeEmbed],
+      components: [buttons],
+    });
+
+    // Confirm ticket creation to user
+    await interaction.reply({
+      content: `Your ticket has been created in ${channel}`,
+      ephemeral: true
+    });
   } catch (error) {
     console.error('Error creating ticket channel:', error);
     await interaction.reply({
