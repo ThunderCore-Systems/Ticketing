@@ -14,7 +14,11 @@ import {
   ChannelType,
   type ChatInputCommandInteraction,
   type ButtonInteraction,
-  AttachmentBuilder
+  AttachmentBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ModalSubmitInteraction
 } from "discord.js";
 import type { Server } from "http";
 import { storage } from "./storage";
@@ -122,6 +126,28 @@ export async function setupDiscordBot(server: Server) {
           } else if (interaction.commandName === 'remove') {
             await handleRemoveUserCommand(interaction);
           }
+        } else if (interaction.isModalSubmit()) {
+          if (interaction.customId.startsWith('ticket_form_')) {
+            const panelId = parseInt(interaction.customId.split('_')[2]);
+            const panel = await storage.getPanel(panelId);
+
+            if (!panel) {
+              await interaction.reply({
+                content: 'This ticket panel no longer exists.',
+                ephemeral: true
+              });
+              return;
+            }
+
+            const responses: Record<string, string> = {};
+            interaction.fields.fields.forEach((field) => {
+              const fieldName = field.customId.replace('field_', '');
+              responses[fieldName] = field.value;
+            });
+
+            // Create ticket with form responses
+            await createTicketChannel(interaction, panel, responses);
+          }
         }
       } catch (error) {
         console.error('Error handling interaction:', error);
@@ -169,7 +195,28 @@ async function handleButtonInteraction(interaction: ButtonInteraction) {
           });
           return;
         }
-        await createTicketChannel(interaction, panel);
+
+        if (panel.formEnabled && panel.formFields?.length > 0) {
+          // Show form modal
+          const modal = new ModalBuilder()
+            .setCustomId(`ticket_form_${panel.id}`)
+            .setTitle(panel.title);
+
+          panel.formFields.forEach(field => {
+            const input = new TextInputBuilder()
+              .setCustomId(`field_${field.label}`)
+              .setLabel(field.label)
+              .setRequired(field.required)
+              .setStyle(field.type === 'textarea' ? TextInputStyle.Paragraph : TextInputStyle.Short);
+
+            const row = new ActionRowBuilder<TextInputBuilder>().addComponents(input);
+            modal.addComponents(row);
+          });
+
+          await interaction.showModal(modal);
+        } else {
+          await createTicketChannel(interaction, panel);
+        }
         break;
       case 'close':
         await closeTicket(interaction, id);
@@ -193,7 +240,11 @@ async function handleButtonInteraction(interaction: ButtonInteraction) {
   }
 }
 
-async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
+async function createTicketChannel(
+  interaction: ButtonInteraction | ModalSubmitInteraction,
+  panel: any,
+  formResponses?: Record<string, string>
+) {
   try {
     const ticketNumber = await getNextTicketNumber(panel.prefix);
     const ticketName = `${panel.prefix}-${ticketNumber}`;
@@ -222,26 +273,23 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
       throw new Error('Failed to create ticket channel');
     }
 
-    const ticket = await storage.createTicket({
-      serverId: panel.serverId,
-      panelId: panel.id,
-      channelId: channel.id,
-      userId: interaction.user.id,
-      number: ticketNumber,
-      status: 'open',
-      claimedBy: null,
-      messages: [],
-    });
-
     const welcomeEmbed = new EmbedBuilder()
       .setTitle(`Welcome to Ticket: ${ticketName}`)
       .setDescription(`Hello ${interaction.user}, welcome to your ticket.\nOur support team will be with you shortly.`)
       .addFields(
         { name: 'Created by', value: `<@${interaction.user.id}>`, inline: true },
         { name: 'Support Team', value: panel.supportRoleIds.map((id: string) => `<@&${id}>`).join(', '), inline: true }
-      )
-      .setColor(0x00ff00)
-      .setTimestamp();
+      );
+
+    // Add form responses to the welcome embed if they exist
+    if (formResponses) {
+      const formattedResponses = Object.entries(formResponses)
+        .map(([field, value]) => `**${field}**: ${value}`)
+        .join('\n');
+      welcomeEmbed.addFields({ name: 'Ticket Information', value: formattedResponses });
+    }
+
+    welcomeEmbed.setColor(0x00ff00).setTimestamp();
 
     const initialMessage = {
       id: 1,
@@ -254,9 +302,17 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
       embedData: welcomeEmbed.toJSON(),
     };
 
-    await storage.updateTicket(ticket.id, {
+    await storage.createTicket({
+      serverId: panel.serverId,
+      panelId: panel.id,
+      channelId: channel.id,
+      userId: interaction.user.id,
+      number: ticketNumber,
+      status: 'open',
+      claimedBy: null,
       messages: [JSON.stringify(initialMessage)],
     });
+
 
     const collector = channel.createMessageCollector();
     collector.on('collect', async (message) => {
@@ -378,19 +434,8 @@ export async function createTicketPanel(
           name: 'Ticket Format',
           value: `${panel.prefix}-NUMBER`
         }
-      );
-
-    // Add form fields information if enabled
-    if (panel.formEnabled && panel.formFields && panel.formFields.length > 0) {
-      embed.addFields({
-        name: 'Required Information',
-        value: panel.formFields
-          .map(field => `• ${field.label}${field.required ? ' (Required)' : ''}`)
-          .join('\n')
-      });
-    }
-
-    embed.setColor(0x0099ff);
+      )
+      .setColor(0x0099ff);
 
     const button = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
