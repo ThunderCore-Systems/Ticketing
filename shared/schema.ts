@@ -56,7 +56,7 @@ export const tickets = pgTable("tickets", {
   createdAt: timestamp("created_at").defaultNow(),
   closedAt: timestamp("closed_at"),
   closedBy: text("closed_by"),
-  messages: text("messages").array(),
+  messages: text("messages").array().notNull().default([]),
 });
 
 // Extend type for messages to include Discord usernames
@@ -65,7 +65,7 @@ export type TicketMessage = {
   content: string;
   userId: string;
   username: string;
-  createdAt: Date;
+  createdAt: string;
 };
 
 // Custom types for statistics

@@ -15,7 +15,7 @@ import { setupStripeWebhooks, createSubscription } from "./stripe";
 import session from "express-session";
 import passport from "passport";
 import { Strategy as DiscordStrategy } from "passport-discord";
-import type { DiscordGuild } from "./types";
+import type { DiscordGuild, TicketMessage } from "./types";
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
@@ -199,17 +199,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get existing messages
       const existingMessages = ticket.messages || [];
-      const newMessage = {
+      const newMessage: TicketMessage = {
         id: existingMessages.length + 1,
         content,
-        userId: req.user.id,
-        username: req.user.username,
-        createdAt: new Date(),
+        userId: (req.user as any).id,
+        username: (req.user as any).username,
+        createdAt: new Date().toISOString()
       };
 
       // Update ticket with new message
       await storage.updateTicket(ticketId, {
-        messages: [...existingMessages, newMessage],
+        messages: [...existingMessages, JSON.stringify(newMessage)],
       });
 
       // Send webhook message if the user is support staff

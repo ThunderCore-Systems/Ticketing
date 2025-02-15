@@ -130,7 +130,31 @@ export class DatabaseStorage implements IStorage {
   // Messages (now part of tickets)
   async getMessagesByTicketId(ticketId: number): Promise<TicketMessage[]> {
     const ticket = await this.getTicket(ticketId);
-    return ticket?.messages as TicketMessage[] || [];
+    if (!ticket?.messages) return [];
+
+    try {
+      return ticket.messages.map(msg => {
+        if (typeof msg === 'string') {
+          // Try to parse if it's a stringified JSON
+          try {
+            return JSON.parse(msg) as TicketMessage;
+          } catch {
+            // If parsing fails, return a basic message structure
+            return {
+              id: 0,
+              content: msg,
+              userId: 'unknown',
+              username: 'Unknown User',
+              createdAt: new Date().toISOString()
+            };
+          }
+        }
+        return msg as unknown as TicketMessage;
+      });
+    } catch (error) {
+      console.error('Error parsing messages:', error);
+      return [];
+    }
   }
 
   // Panels
