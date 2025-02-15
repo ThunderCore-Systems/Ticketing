@@ -681,3 +681,27 @@ function formatDuration(start?: Date | null, end?: Date | null): string {
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
 }
+
+// Add a new function for validating role IDs
+export async function validateRoleId(guildId: string, roleId: string) {
+  if (!client) throw new Error('Discord bot is not initialized');
+
+  try {
+    const guild = await client.guilds.fetch(guildId);
+    const role = await guild.roles.fetch(roleId);
+
+    if (!role) {
+      return null;
+    }
+
+    return {
+      id: role.id,
+      name: role.name,
+      color: role.color,
+      position: role.position
+    };
+  } catch (error) {
+    console.error('Error validating role:', error);
+    return null;
+  }
+}

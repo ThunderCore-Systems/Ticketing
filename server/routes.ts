@@ -330,6 +330,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add new endpoint for role validation
+  app.post('/api/servers/:serverId/validate-role', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check access
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const roleSchema = z.object({
+        roleId: z.string().min(1, "Role ID is required")
+      });
+
+      const { roleId } = roleSchema.parse(req.body);
+      const role = await validateRoleId(server.discordId, roleId);
+
+      if (!role) {
+        return res.status(400).json({ message: 'Invalid role ID' });
+      }
+
+      // Update server with new ticket manager role
+      const updatedServer = await storage.updateServer(server.id, {
+        ticketManagerRoleId: roleId
+      });
+
+      res.json({ role, server: updatedServer });
+    } catch (error) {
+      console.error('Error validating role:', error);
+      res.status(500).json({ 
+        message: 'Failed to validate role',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Discord server information endpoints
   app.get('/api/servers/:serverId/channels', requireAuth, async (req, res) => {
     try {
@@ -740,4 +779,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   return httpServer;
+}
+
+// Placeholder for the actual validation function.  Needs to be implemented elsewhere.
+async function validateRoleId(guildId: string, roleId: string): Promise<any | null> {
+  //Implementation to validate roleId against Discord API goes here.  Return the role object if valid, null otherwise.
+  return null; // Replace with actual validation logic
 }
