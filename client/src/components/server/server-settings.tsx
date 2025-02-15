@@ -257,9 +257,9 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               </p>
             </div>
             <Switch
-              checked={server.restrictClaimedMessages || false}
+              checked={server.restrict_claimed_messages || false}
               onCheckedChange={(checked) =>
-                updateSettings.mutate({ restrictClaimedMessages: checked })
+                updateSettings.mutate({ restrict_claimed_messages: checked })
               }
               disabled={updateSettings.isPending}
             />

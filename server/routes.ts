@@ -248,7 +248,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user has permission to send messages
-      if (server.restrictClaimedMessages && ticket.claimedBy) {
+      if (server.restrict_claimed_messages && ticket.claimedBy) {
         // Allow server owner and claimed user to send messages
         const isOwner = server.ownerId === (req.user as any).id;
         const isClaimedBy = ticket.claimedBy === (req.user as any).discordId;
@@ -867,7 +867,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         error: error instanceof Error ? error.message : 'Unknown error'
       });
     }
-  });app.get('/api/servers/:serverId/support-stats', requireAuth, async (req, res) => {
+  });
+  app.get('/api/servers/:serverId/support-stats', requireAuth, async (req, res) => {
     try {
       const server = await storage.getServer(parseInt(req.params.serverId));
       if (!server) {
