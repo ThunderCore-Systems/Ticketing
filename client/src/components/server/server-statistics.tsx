@@ -7,12 +7,21 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState } from "react";
 import type { Ticket, SupportTeamMember } from "@shared/schema";
 import {
@@ -23,8 +32,9 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  LineChart,
+  Line,
 } from "recharts";
-import { Badge } from "@/components/ui/badge";
 
 interface ServerStatisticsProps {
   serverId: number;
@@ -43,7 +53,7 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
     queryKey: [`/api/servers/${serverId}/support-stats`],
   });
 
-  if (!tickets) return null;
+  if (!tickets || !supportStats) return null;
 
   // Calculate general statistics
   const totalTickets = tickets.length;
@@ -81,14 +91,14 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
           description="Currently open tickets"
         />
         <StatsCard
+          title="Resolution Rate"
+          value={`${Math.round((closedTickets / totalTickets) * 100)}%`}
+          description="Percentage of tickets resolved"
+        />
+        <StatsCard
           title="Avg. Response Time"
           value={formatTime(avgResponseTime)}
           description="Average time to first response"
-        />
-        <StatsCard
-          title="Avg. Resolution Time"
-          value={formatTime(avgResolutionTime)}
-          description="Average time to close ticket"
         />
       </div>
 
@@ -119,51 +129,161 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            {!supportStats || supportStats.length === 0 ? (
+            {supportStats.length === 0 ? (
               <p className="text-muted-foreground">No support team activity recorded yet.</p>
             ) : (
               supportStats.map((member) => (
-                <div key={member.id} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium flex items-center gap-2">
-                        {member.name}
-                        <Badge variant={member.roleType === 'manager' ? 'default' : 'secondary'}>
-                          {member.roleType === 'manager' ? 'Manager' : 'Support'}
-                        </Badge>
-                      </h4>
+                <Dialog key={member.id}>
+                  <DialogTrigger asChild>
+                    <div className="space-y-2 hover:bg-muted p-4 rounded-lg cursor-pointer transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Avatar>
+                            <AvatarImage src={member.avatar || undefined} />
+                            <AvatarFallback>
+                              {member.name.split(' ').map(n => n[0]).join('')}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <h4 className="font-medium flex items-center gap-2">
+                              {member.name}
+                              <Badge variant={member.roleType === 'manager' ? 'default' : 'secondary'}>
+                                {member.roleType === 'manager' ? 'Manager' : 'Support'}
+                              </Badge>
+                            </h4>
+                            <p className="text-sm text-muted-foreground">
+                              Last active: {member.lastActive ? new Date(member.lastActive).toLocaleDateString() : 'Not yet active'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-muted rounded-lg p-3">
+                          <div className="text-sm font-medium">Tickets Handled</div>
+                          <div className="text-2xl">{member.ticketsHandled}</div>
+                        </div>
+
+                        <div className="bg-muted rounded-lg p-3">
+                          <div className="text-sm font-medium">Resolution Rate</div>
+                          <div className="text-2xl">{member.resolutionRate}%</div>
+                        </div>
+
+                        <div className="bg-muted rounded-lg p-3">
+                          <div className="text-sm font-medium">Avg. Response</div>
+                          <div className="text-2xl">{formatTime(member.avgResponseTime)}</div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      {member.lastActive ? (
-                        `Last active: ${new Date(member.lastActive).toLocaleDateString()}`
-                      ) : (
-                        'Not active yet'
+                  </DialogTrigger>
+
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <Avatar>
+                          <AvatarImage src={member.avatar || undefined} />
+                          <AvatarFallback>
+                            {member.name.split(' ').map(n => n[0]).join('')}
+                          </AvatarFallback>
+                        </Avatar>
+                        {member.name}
+                      </DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-6">
+                      {/* Detailed Statistics Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <StatBox
+                          label="Total Tickets"
+                          value={member.ticketsHandled}
+                        />
+                        <StatBox
+                          label="Resolved Tickets"
+                          value={member.resolvedTickets}
+                        />
+                        <StatBox
+                          label="Resolution Rate"
+                          value={`${member.resolutionRate}%`}
+                        />
+                        <StatBox
+                          label="Fastest Response"
+                          value={formatTime(member.fastestResponse / 60)}
+                        />
+                        <StatBox
+                          label="Slowest Response"
+                          value={formatTime(member.slowestResponse / 60)}
+                        />
+                        <StatBox
+                          label="Avg. Messages/Ticket"
+                          value={member.averageMessagesPerTicket}
+                        />
+                      </div>
+
+                      {/* Activity Patterns */}
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="text-lg">Daily Activity Pattern</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="h-[200px]">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart data={member.peakHours.map((value, hour) => ({
+                                hour: `${hour}:00`,
+                                activity: value
+                              }))}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="hour" />
+                                <YAxis />
+                                <Tooltip />
+                                <Line 
+                                  type="monotone" 
+                                  dataKey="activity" 
+                                  stroke="hsl(var(--primary))"
+                                />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      {/* Categories */}
+                      {member.categories && member.categories.length > 0 && (
+                        <Card>
+                          <CardHeader>
+                            <CardTitle className="text-lg">Ticket Categories</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-2">
+                              {member.categories.map(({ category, count, percentage }) => (
+                                <div key={category} className="flex justify-between items-center">
+                                  <span>{category}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-muted-foreground">{count}</span>
+                                    <Badge variant="secondary">{percentage}%</Badge>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
                       )}
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-muted rounded-lg p-3">
-                      <div className="text-sm font-medium">Tickets Handled</div>
-                      <div className="text-2xl">{member.ticketsHandled}</div>
-                    </div>
-
-                    <div className="bg-muted rounded-lg p-3">
-                      <div className="text-sm font-medium">Avg. Response Time</div>
-                      <div className="text-2xl">{formatTime(member.avgResponseTime)}</div>
-                    </div>
-
-                    <div className="bg-muted rounded-lg p-3">
-                      <div className="text-sm font-medium">Resolution Rate</div>
-                      <div className="text-2xl">{member.resolutionRate}%</div>
-                    </div>
-                  </div>
-                </div>
+                  </DialogContent>
+                </Dialog>
               ))
             )}
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function StatBox({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="bg-muted rounded-lg p-3">
+      <div className="text-sm font-medium text-muted-foreground">{label}</div>
+      <div className="text-2xl font-semibold">{value}</div>
     </div>
   );
 }
@@ -188,19 +308,23 @@ function StatsCard({ title, value, description }: {
 
 function calculateAverageResponseTime(tickets: Ticket[]): number {
   const ticketsWithResponses = tickets.filter(ticket => {
-    const messages = ticket.messages || [];
+    const messages = ticket.messages ? ticket.messages.map(msg => 
+      typeof msg === 'string' ? JSON.parse(msg) : msg
+    ) : [];
     return messages.length >= 2;
   });
 
   if (ticketsWithResponses.length === 0) return 0;
 
   const totalResponseTime = ticketsWithResponses.reduce((total, ticket) => {
-    const messages = ticket.messages || [];
+    const messages = ticket.messages ? ticket.messages.map(msg => 
+      typeof msg === 'string' ? JSON.parse(msg) : msg
+    ) : [];
     if (messages.length < 2) return total;
 
-    const firstMessage = messages[0].createdAt;
-    const firstResponse = messages[1].createdAt;
-    return total + (new Date(firstResponse).getTime() - new Date(firstMessage).getTime());
+    const firstMessage = messages[0];
+    const firstResponse = messages[1];
+    return total + (new Date(firstResponse.createdAt).getTime() - new Date(firstMessage.createdAt).getTime());
   }, 0);
 
   return Math.round(totalResponseTime / ticketsWithResponses.length / (1000 * 60));

@@ -462,7 +462,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Add the support stats endpoint before the Stripe webhook endpoint
+  // Update the support stats endpoint
   app.get('/api/servers/:serverId/support-stats', requireAuth, async (req, res) => {
     try {
       const server = await storage.getServer(parseInt(req.params.serverId));
@@ -505,8 +505,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
               resolvedTickets: 0,
               totalResponseTime: 0,
               ticketsWithResponse: 0,
+              averageMessagesPerTicket: 0,
+              totalMessages: 0,
               lastActive: null,
-              name: null, //added
+              name: null,
+              avatar: null,
+              fastestResponse: Infinity,
+              slowestResponse: 0,
+              peakHours: Array(24).fill(0), // Track activity by hour
+              weekdayActivity: Array(7).fill(0), // Track activity by day of week
+              categories: new Map(), // Track tickets by category
+              successRate: 0,
+              averageResolutionTime: 0,
             });
           }
 
@@ -515,26 +525,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           if (ticket.status === "closed") {
             member.resolvedTickets++;
+            if (ticket.closedAt && ticket.createdAt) {
+              const resolutionTime = new Date(ticket.closedAt).getTime() - new Date(ticket.createdAt).getTime();
+              member.averageResolutionTime = 
+                (member.averageResolutionTime * (member.resolvedTickets - 1) + resolutionTime) / member.resolvedTickets;
+            }
           }
 
-          if (ticket.messages?.length > 1) {
-            const firstMessage = ticket.messages[0];
-            const firstResponse = ticket.messages[1];
-            if (firstMessage && firstResponse) {
-              member.totalResponseTime += new Date(firstResponse.createdAt).getTime() - new Date(firstMessage.createdAt).getTime();
+          // Process messages
+          if (ticket.messages && Array.isArray(ticket.messages)) {
+            const messages = ticket.messages.map(msg => typeof msg === 'string' ? JSON.parse(msg) : msg);
+
+            member.totalMessages += messages.filter(m => m.userId === ticket.claimedBy).length;
+
+            // Process first response time
+            const userFirstMessage = messages[0];
+            const staffFirstResponse = messages.find(m => m.userId === ticket.claimedBy);
+
+            if (userFirstMessage && staffFirstResponse) {
+              const responseTime = new Date(staffFirstResponse.createdAt).getTime() - new Date(userFirstMessage.createdAt).getTime();
+
+              member.totalResponseTime += responseTime;
               member.ticketsWithResponse++;
+
+              // Track fastest and slowest responses
+              member.fastestResponse = Math.min(member.fastestResponse, responseTime);
+              member.slowestResponse = Math.max(member.slowestResponse, responseTime);
             }
 
-            // Update last active time
-            const messages = ticket.messages;
-            if (messages.length > 0) {
-              const lastMessageTime = new Date(messages[messages.length - 1].createdAt);
-              if (!member.lastActive || lastMessageTime > member.lastActive) {
-                member.lastActive = lastMessageTime;
-                // Update username from the last message
-                member.name = messages[messages.length - 1].username;
+            // Update activity patterns
+            messages.forEach(msg => {
+              if (msg.userId === ticket.claimedBy) {
+                const msgDate = new Date(msg.createdAt);
+                member.peakHours[msgDate.getHours()]++;
+                member.weekdayActivity[msgDate.getDay()]++;
+              }
+            });
+
+            // Update user info from latest message
+            const latestStaffMessage = [...messages].reverse()
+              .find(m => m.userId === ticket.claimedBy);
+            if (latestStaffMessage) {
+              member.name = latestStaffMessage.username;
+              member.avatar = latestStaffMessage.avatar;
+
+              const messageTime = new Date(latestStaffMessage.createdAt);
+              if (!member.lastActive || messageTime > member.lastActive) {
+                member.lastActive = messageTime;
               }
             }
+          }
+
+          // Track ticket categories
+          if (ticket.category) {
+            const currentCount = member.categories.get(ticket.category) || 0;
+            member.categories.set(ticket.category, currentCount + 1);
           }
         }
       });
@@ -542,16 +587,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Calculate final stats for each member
       const stats = Array.from(supportMembers.values()).map(member => ({
         id: member.id,
-        name: member.name || 'Unknown User',
+        name: member.name || 'Staff Member',
+        avatar: member.avatar,
         roleType: server.ticketManagerRoleId === member.id ? 'manager' : 'support',
         ticketsHandled: member.ticketsHandled,
+        resolvedTickets: member.resolvedTickets,
         avgResponseTime: member.ticketsWithResponse > 0 
-          ? Math.round(member.totalResponseTime / member.ticketsWithResponse / (1000 * 60))
+          ? Math.round(member.totalResponseTime / member.ticketsWithResponse / (1000 * 60)) // in minutes
           : 0,
+        fastestResponse: member.fastestResponse === Infinity ? 0 : Math.round(member.fastestResponse / 1000), // in seconds
+        slowestResponse: Math.round(member.slowestResponse / 1000), // in seconds
         resolutionRate: member.ticketsHandled > 0
           ? Math.round((member.resolvedTickets / member.ticketsHandled) * 100)
           : 0,
+        averageMessagesPerTicket: member.ticketsHandled > 0
+          ? Math.round(member.totalMessages / member.ticketsHandled)
+          : 0,
         lastActive: member.lastActive,
+        peakHours: member.peakHours,
+        weekdayActivity: member.weekdayActivity,
+        categories: Array.from(member.categories.entries()).map(([category, count]) => ({
+          category,
+          count,
+          percentage: Math.round((count / member.ticketsHandled) * 100)
+        })),
+        averageResolutionTime: Math.round(member.averageResolutionTime / (1000 * 60)), // in minutes
       }));
 
       res.json(stats);
