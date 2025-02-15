@@ -1,6 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
-import { useDiscordUsername } from "@/hooks/use-discord-user";
+import { useEffect, useRef } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +12,11 @@ interface Message {
   createdAt: string;
   source: 'discord' | 'dashboard';
   isSupport?: boolean;
+  attachments?: Array<{
+    url: string;
+    name: string;
+    contentType?: string;
+  }>;
 }
 
 interface TicketMessagesProps {
@@ -21,34 +25,33 @@ interface TicketMessagesProps {
 
 export default function TicketMessages({ ticketId }: TicketMessagesProps) {
   const queryClient = useQueryClient();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
   const queryKey = [`/api/tickets/${ticketId}/messages`];
 
   // Set up polling for new messages
   const { data: messages = [] } = useQuery<Message[]>({
     queryKey,
-    refetchInterval: 3000, // Poll every 3 seconds
+    refetchInterval: 1000, // Poll every second
   });
 
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
-    // Scroll to bottom on new messages
-    const chat = document.getElementById('chat-messages');
-    if (chat) {
-      chat.scrollTop = chat.scrollHeight;
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
 
   return (
-    <div id="chat-messages" className="space-y-4 overflow-auto h-[calc(100vh-20rem)]">
+    <div className="space-y-4 overflow-auto h-[calc(100vh-20rem)] p-4">
       {messages.map((message) => (
         <MessageBubble key={message.id} message={message} />
       ))}
+      <div ref={messagesEndRef} />
     </div>
   );
 }
 
 function MessageBubble({ message }: { message: Message }) {
-  const username = useDiscordUsername(message.userId);
-  
   return (
     <div className={cn(
       "flex gap-3 items-start",
@@ -57,16 +60,16 @@ function MessageBubble({ message }: { message: Message }) {
       <Avatar>
         <AvatarImage src={message.avatarUrl} />
         <AvatarFallback>
-          {username[0]?.toUpperCase()}
+          {message.username?.[0]?.toUpperCase() || '?'}
         </AvatarFallback>
       </Avatar>
       <div className={cn(
-        "flex flex-col",
+        "flex flex-col max-w-[80%]",
         message.isSupport && "items-end"
       )}>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">
-            {username}
+            {message.username || 'Unknown User'}
           </span>
           <span className="text-xs text-muted-foreground">
             {new Date(message.createdAt).toLocaleString()}
@@ -78,12 +81,27 @@ function MessageBubble({ message }: { message: Message }) {
           )}
         </div>
         <div className={cn(
-          "mt-1 rounded-lg p-3",
+          "mt-1 rounded-lg p-3 break-words",
           message.isSupport 
             ? "bg-primary text-primary-foreground" 
             : "bg-muted"
         )}>
           {message.content}
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {message.attachments.map((attachment, index) => (
+                <a
+                  key={index}
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-sm underline"
+                >
+                  📎 {attachment.name}
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

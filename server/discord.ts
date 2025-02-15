@@ -215,37 +215,46 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
     collector.on('collect', async (message) => {
       if (message.author.bot) return; // Skip bot messages
 
-      const existingTicket = await storage.getTicket(ticket.id);
-      if (!existingTicket) return;
+      try {
+        const existingTicket = await storage.getTicket(ticket.id);
+        if (!existingTicket) return;
 
-      const existingMessages = existingTicket.messages || [];
-      const newMessage = {
-        id: existingMessages.length + 1,
-        content: message.content,
-        userId: message.author.id,
-        username: message.member?.displayName || message.author.username,
-        avatarUrl: message.author.displayAvatarURL(),
-        source: 'discord',
-        createdAt: message.createdAt.toISOString(),
-        attachments: message.attachments.map(att => ({
-          url: att.url,
-          name: att.name,
-          contentType: att.contentType,
-        })),
-      };
+        const existingMessages = existingTicket.messages || [];
+        const newMessage = {
+          id: existingMessages.length + 1,
+          content: message.content,
+          userId: message.author.id,
+          username: message.member?.displayName || message.author.username,
+          avatarUrl: message.author.displayAvatarURL(),
+          source: 'discord',
+          createdAt: message.createdAt.toISOString(),
+          attachments: message.attachments.map(att => ({
+            url: att.url,
+            name: att.name,
+            contentType: att.contentType,
+          })),
+        };
 
-      // Update ticket with new message
-      await storage.updateTicket(ticket.id, {
-        messages: [...existingMessages, JSON.stringify(newMessage)],
-      });
+        // Parse existing messages
+        const parsedMessages = existingMessages.map(msg => 
+          typeof msg === 'string' ? JSON.parse(msg) : msg
+        );
 
-      // Log for debugging
-      console.log('Discord message stored:', {
-        ticketId: ticket.id,
-        messageContent: message.content,
-        authorId: message.author.id,
-        authorName: message.member?.displayName || message.author.username
-      });
+        // Update ticket with new message
+        await storage.updateTicket(ticket.id, {
+          messages: [...parsedMessages, newMessage].map(msg => JSON.stringify(msg)),
+        });
+
+        console.log('Discord message stored:', {
+          ticketId: ticket.id,
+          messageContent: message.content,
+          authorId: message.author.id,
+          authorName: message.member?.displayName || message.author.username,
+          messageCount: parsedMessages.length + 1
+        });
+      } catch (error) {
+        console.error('Error storing Discord message:', error);
+      }
     });
 
     // Create ticket management buttons
