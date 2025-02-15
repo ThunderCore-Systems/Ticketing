@@ -17,7 +17,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Ticket, Panel } from "@shared/schema";
+import { AlertCircle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import type { Ticket, Panel, Server } from "@shared/schema";
 
 interface TicketListProps {
   serverId: number;
@@ -25,6 +27,18 @@ interface TicketListProps {
 
 export default function TicketList({ serverId }: TicketListProps) {
   const [, setLocation] = useLocation();
+  const [selectedPanelId, setSelectedPanelId] = useState<string>("all");
+
+  // Get current user
+  const { data: user } = useQuery({
+    queryKey: ["/api/auth/user"]
+  });
+
+  // Get server details for permissions
+  const { data: server } = useQuery<Server>({
+    queryKey: [`/api/servers/${serverId}`]
+  });
+
   const { data: tickets } = useQuery<Ticket[]>({ 
     queryKey: [`/api/servers/${serverId}/tickets`]
   });
@@ -33,19 +47,26 @@ export default function TicketList({ serverId }: TicketListProps) {
     queryKey: [`/api/servers/${serverId}/panels`],
   });
 
-  const [selectedPanelId, setSelectedPanelId] = useState<string>("all");
-
-  if (!tickets || !panels) {
+  if (!tickets || !panels || !server || !user) {
     return null;
   }
 
+  // Check if user is a ticket manager
+  const isTicketManager = server.ticketManagerRoleId && 
+    user.roles?.includes(server.ticketManagerRoleId);
+
+  // Filter tickets based on status and permissions
+  const visibleTickets = tickets.filter(ticket => 
+    isTicketManager ? true : ticket.status === "open"
+  );
+
   const filteredTickets = selectedPanelId === "all" 
-    ? tickets
-    : tickets.filter(ticket => ticket.panelId === parseInt(selectedPanelId));
+    ? visibleTickets
+    : visibleTickets.filter(ticket => ticket.panelId === parseInt(selectedPanelId));
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-between items-center">
         <Select 
           value={selectedPanelId} 
           onValueChange={setSelectedPanelId}
@@ -62,6 +83,16 @@ export default function TicketList({ serverId }: TicketListProps) {
             ))}
           </SelectContent>
         </Select>
+
+        {!isTicketManager && (
+          <Alert variant="info" className="max-w-md">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Note</AlertTitle>
+            <AlertDescription>
+              Only open tickets are shown. Contact an administrator if you need to view closed tickets.
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
       <Table>
@@ -71,6 +102,7 @@ export default function TicketList({ serverId }: TicketListProps) {
             <TableHead>Panel</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Created By</TableHead>
+            <TableHead>Claimed By</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -96,11 +128,18 @@ export default function TicketList({ serverId }: TicketListProps) {
                   {ticket.userId}
                 </span>
               </TableCell>
+              <TableCell>
+                {ticket.claimedBy && (
+                  <Badge variant="outline">
+                    {ticket.claimedBy}
+                  </Badge>
+                )}
+              </TableCell>
             </TableRow>
           ))}
           {filteredTickets.length === 0 && (
             <TableRow>
-              <TableCell colSpan={4} className="text-center text-muted-foreground">
+              <TableCell colSpan={5} className="text-center text-muted-foreground">
                 No tickets found
               </TableCell>
             </TableRow>

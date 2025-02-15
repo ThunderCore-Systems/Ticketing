@@ -25,6 +25,7 @@ export const servers = pgTable("servers", {
   claimedByUserId: integer("claimed_by_user_id").references(() => users.id),
   anonymousMode: boolean("anonymous_mode").default(false),
   webhookAvatar: text("webhook_avatar"),
+  ticketManagerRoleId: text("ticket_manager_role_id"),
 });
 
 export const panels = pgTable("panels", {
@@ -61,7 +62,6 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Relations definitions remain unchanged
 export const userRelations = relations(users, ({ many }) => ({
   servers: many(servers),
   messages: many(messages),
@@ -105,14 +105,12 @@ export const messageRelations = relations(messages, ({ one }) => ({
   }),
 }));
 
-// Update insert schemas to include new fields
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertServerSchema = createInsertSchema(servers).omit({ id: true });
 export const insertPanelSchema = createInsertSchema(panels).omit({ id: true });
 export const insertTicketSchema = createInsertSchema(tickets).omit({ id: true, createdAt: true, closedAt: true });
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 
-// Export types
 export type User = typeof users.$inferSelect;
 export type Server = typeof servers.$inferSelect;
 export type Panel = typeof panels.$inferSelect;

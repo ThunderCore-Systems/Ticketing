@@ -78,9 +78,9 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
                 When enabled, support team messages will appear as "Support Team" instead of individual usernames
               </p>
             </div>
-            <Switch 
-              checked={server.anonymousMode}
-              onCheckedChange={(checked) => 
+            <Switch
+              checked={server.anonymousMode || false}
+              onCheckedChange={(checked) =>
                 updateSettings.mutate({ anonymousMode: checked })
               }
             />
@@ -90,9 +90,9 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
             <Label>Support Team Avatar</Label>
             <div className="flex items-center gap-4">
               {server.webhookAvatar && (
-                <img 
-                  src={server.webhookAvatar} 
-                  alt="Webhook Avatar" 
+                <img
+                  src={server.webhookAvatar}
+                  alt="Webhook Avatar"
                   className="w-12 h-12 rounded-full"
                 />
               )}
@@ -116,6 +116,22 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
             </div>
           </div>
 
+          <div className="space-y-2">
+            <Label>
+              Ticket Manager Role
+            </Label>
+            <Input
+              placeholder="Enter Discord role ID for ticket managers"
+              value={server.ticketManagerRoleId || ""}
+              onChange={(e) =>
+                updateSettings.mutate({ ticketManagerRoleId: e.target.value })
+              }
+            />
+            <p className="text-sm text-muted-foreground">
+              Members with this role can view all tickets and manage users
+            </p>
+          </div>
+
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label>
@@ -129,7 +145,6 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
           </div>
         </CardContent>
       </Card>
-
       <Card>
         <CardHeader>
           <CardTitle>Advanced Settings</CardTitle>
@@ -145,7 +160,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
             <Input
               placeholder="Enter Discord role ID for support team"
               value={server.supportRoleId || ""}
-              onChange={(e) => 
+              onChange={(e) =>
                 updateSettings.mutate({ supportRoleId: e.target.value })
               }
             />
