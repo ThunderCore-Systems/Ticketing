@@ -1,9 +1,10 @@
 import { 
-  users, servers, tickets, messages,
+  users, servers, tickets, messages, panels,
   type User, type InsertUser, 
   type Server, type InsertServer,
   type Ticket, type InsertTicket,
-  type Message, type InsertMessage 
+  type Message, type InsertMessage,
+  type Panel, type InsertPanel
 } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
@@ -32,6 +33,16 @@ export interface IStorage {
   // Messages
   getMessagesByTicketId(ticketId: number): Promise<Message[]>;
   createMessage(message: InsertMessage): Promise<Message>;
+
+  // Panels
+  getPanel(id: number): Promise<Panel | undefined>;
+  getPanelsByServerId(serverId: number): Promise<Panel[]>;
+  createPanel(panel: InsertPanel): Promise<Panel>;
+  updatePanel(id: number, panel: Partial<Panel>): Promise<Panel>;
+
+  // Updated Tickets methods
+  getTicketsByPrefix(prefix: string): Promise<Ticket[]>;
+  getTicketsByPanelId(panelId: number): Promise<Ticket[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -126,6 +137,49 @@ export class DatabaseStorage implements IStorage {
   async createMessage(insertMessage: InsertMessage): Promise<Message> {
     const [message] = await db.insert(messages).values(insertMessage).returning();
     return message;
+  }
+
+  // Panels
+  async getPanel(id: number): Promise<Panel | undefined> {
+    const [panel] = await db.select().from(panels).where(eq(panels.id, id));
+    return panel;
+  }
+
+  async getPanelsByServerId(serverId: number): Promise<Panel[]> {
+    return db.select().from(panels).where(eq(panels.serverId, serverId));
+  }
+
+  async createPanel(insertPanel: InsertPanel): Promise<Panel> {
+    const [panel] = await db.insert(panels).values(insertPanel).returning();
+    return panel;
+  }
+
+  async updatePanel(id: number, updates: Partial<Panel>): Promise<Panel> {
+    const [panel] = await db
+      .update(panels)
+      .set(updates)
+      .where(eq(panels.id, id))
+      .returning();
+    return panel;
+  }
+
+  // Updated Tickets methods
+  async getTicketsByPrefix(prefix: string): Promise<Ticket[]> {
+    const panelsWithPrefix = await db
+      .select()
+      .from(panels)
+      .where(eq(panels.prefix, prefix));
+
+    if (!panelsWithPrefix.length) return [];
+
+    return db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.panelId, panelsWithPrefix[0].id));
+  }
+
+  async getTicketsByPanelId(panelId: number): Promise<Ticket[]> {
+    return db.select().from(tickets).where(eq(tickets.panelId, panelId));
   }
 }
 

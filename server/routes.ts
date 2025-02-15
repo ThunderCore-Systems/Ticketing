@@ -209,6 +209,105 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Discord server information endpoints
+  app.get('/api/servers/:serverId/channels', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check access
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const channels = await getServerChannels(server.discordId);
+      res.json(channels);
+    } catch (error) {
+      console.error('Error fetching channels:', error);
+      res.status(500).json({ message: 'Failed to fetch channels' });
+    }
+  });
+
+  app.get('/api/servers/:serverId/categories', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check access
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const categories = await getServerCategories(server.discordId);
+      res.json(categories);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      res.status(500).json({ message: 'Failed to fetch categories' });
+    }
+  });
+
+  app.get('/api/servers/:serverId/roles', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check access
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const roles = await getServerRoles(server.discordId);
+      res.json(roles);
+    } catch (error) {
+      console.error('Error fetching roles:', error);
+      res.status(500).json({ message: 'Failed to fetch roles' });
+    }
+  });
+
+  // Panel creation endpoint
+  app.post('/api/servers/:serverId/panels', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check access
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const panel = await storage.createPanel({
+        ...req.body,
+        serverId: server.id,
+      });
+
+      // Create and send Discord embed
+      await createTicketPanel(
+        server.discordId,
+        panel.channelId,
+        {
+          title: panel.title,
+          description: panel.description,
+          prefix: panel.prefix,
+          categoryId: panel.categoryId,
+          supportRoleId: panel.supportRoleId,
+        }
+      );
+
+      res.json(panel);
+    } catch (error) {
+      console.error('Error creating panel:', error);
+      res.status(500).json({ message: 'Failed to create panel' });
+    }
+  });
+
   // Stripe webhook - no auth required
   app.post('/api/stripe/webhook', setupStripeWebhooks());
 

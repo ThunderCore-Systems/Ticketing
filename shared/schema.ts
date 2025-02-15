@@ -25,13 +25,26 @@ export const servers = pgTable("servers", {
   claimedByUserId: integer("claimed_by_user_id").references(() => users.id),
 });
 
+export const panels = pgTable("panels", {
+  id: serial("id").primaryKey(),
+  serverId: integer("server_id").references(() => servers.id),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  channelId: text("channel_id").notNull(),
+  categoryId: text("category_id").notNull(),
+  supportRoleId: text("support_role_id").notNull(),
+  prefix: text("prefix").notNull(),
+});
+
 export const tickets = pgTable("tickets", {
   id: serial("id").primaryKey(),
   serverId: integer("server_id").references(() => servers.id),
-  userId: integer("user_id").references(() => users.id),
-  title: text("title").notNull(),
+  panelId: integer("panel_id").references(() => panels.id),
+  userId: text("user_id").notNull(),
+  channelId: text("channel_id"),
+  number: integer("number").notNull(),
   status: text("status").notNull().default("open"),
-  discordChannelId: text("discord_channel_id"),
+  claimedBy: text("claimed_by"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -57,16 +70,23 @@ export const serverRelations = relations(servers, ({ one, many }) => ({
   tickets: many(tickets),
 }));
 
-export const ticketRelations = relations(tickets, ({ one, many }) => ({
+export const panelRelations = relations(panels, ({ one, many }) => ({
+  server: one(servers, {
+    fields: [panels.serverId],
+    references: [servers.id],
+  }),
+  tickets: many(tickets),
+}));
+
+export const ticketRelations = relations(tickets, ({ one }) => ({
   server: one(servers, {
     fields: [tickets.serverId],
     references: [servers.id],
   }),
-  user: one(users, {
-    fields: [tickets.userId],
-    references: [users.id],
+  panel: one(panels, {
+    fields: [tickets.panelId],
+    references: [panels.id],
   }),
-  messages: many(messages),
 }));
 
 export const messageRelations = relations(messages, ({ one }) => ({
@@ -82,15 +102,18 @@ export const messageRelations = relations(messages, ({ one }) => ({
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertServerSchema = createInsertSchema(servers).omit({ id: true });
+export const insertPanelSchema = createInsertSchema(panels).omit({ id: true });
 export const insertTicketSchema = createInsertSchema(tickets).omit({ id: true, createdAt: true });
 export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 
 export type User = typeof users.$inferSelect;
 export type Server = typeof servers.$inferSelect;
+export type Panel = typeof panels.$inferSelect;
 export type Ticket = typeof tickets.$inferSelect;
 export type Message = typeof messages.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertServer = z.infer<typeof insertServerSchema>;
+export type InsertPanel = z.infer<typeof insertPanelSchema>;
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
