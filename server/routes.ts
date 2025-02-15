@@ -297,7 +297,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           description: panel.description,
           prefix: panel.prefix,
           categoryId: panel.categoryId,
-          supportRoleId: panel.supportRoleId,
+          supportRoleIds: panel.supportRoleIds,
         }
       );
 

@@ -200,7 +200,7 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
   }
 }
 
-async function createTicketPanel(
+export async function createTicketPanel(
   guildId: string,
   channelId: string,
   panel: {
@@ -208,7 +208,7 @@ async function createTicketPanel(
     description: string;
     prefix: string;
     categoryId: string;
-    supportRoleId: string;
+    supportRoleIds: string[]; // Changed to array
   }
 ) {
   if (!client) throw new Error('Discord bot is not initialized');
@@ -223,7 +223,10 @@ async function createTicketPanel(
       .setTitle(panel.title)
       .setDescription(panel.description)
       .addFields(
-        { name: 'Support Team', value: `<@&${panel.supportRoleId}>` },
+        { 
+          name: 'Support Team', 
+          value: panel.supportRoleIds.map(id => `<@&${id}>`).join(', ') 
+        },
         { name: 'Ticket Format', value: `${panel.prefix}-NUMBER` }
       )
       .setColor(0x0099ff);
