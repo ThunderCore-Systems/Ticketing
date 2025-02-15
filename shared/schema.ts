@@ -36,11 +36,12 @@ export const panels = pgTable("panels", {
   prefix: text("prefix").notNull(),
 });
 
+// Remove user_id reference and make it text type since it will store Discord user IDs
 export const tickets = pgTable("tickets", {
   id: serial("id").primaryKey(),
   serverId: integer("server_id").references(() => servers.id),
   panelId: integer("panel_id").references(() => panels.id),
-  userId: text("user_id").notNull(),
+  userId: text("user_id").notNull(), // Discord user ID
   channelId: text("channel_id"),
   number: integer("number").notNull(),
   status: text("status").notNull().default("open"),
@@ -58,7 +59,6 @@ export const messages = pgTable("messages", {
 
 export const userRelations = relations(users, ({ many }) => ({
   servers: many(servers),
-  tickets: many(tickets),
   messages: many(messages),
 }));
 
