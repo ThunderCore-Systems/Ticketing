@@ -437,32 +437,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         panel.supportRoleIds.forEach(roleId => supportRoleIds.add(roleId));
       });
 
-      // Create a map of role IDs to role names
-      const roleMap = new Map(roles.map(role => [role.id, role.name]));
-
-      // Initialize stats for each support role
+      // Create a map to track support member stats
       const supportMembers = new Map();
-
-      // Add entries for all roles that could handle tickets
-      supportRoleIds.forEach(roleId => {
-        const roleName = roleMap.get(roleId) || roleId;
-        const roleType = roleId === server.ticketManagerRoleId ? 'manager' : 'support';
-
-        supportMembers.set(roleId, {
-          id: roleId,
-          name: roleName,
-          roleType,
-          ticketsHandled: 0,
-          resolvedTickets: 0,
-          totalResponseTime: 0,
-          ticketsWithResponse: 0,
-          lastActive: null,
-        });
-      });
 
       // Process ticket data
       tickets.forEach(ticket => {
-        if (ticket.claimedBy && supportMembers.has(ticket.claimedBy)) {
+        if (ticket.claimedBy) {
+          // Initialize member stats if not exists
+          if (!supportMembers.has(ticket.claimedBy)) {
+            supportMembers.set(ticket.claimedBy, {
+              id: ticket.claimedBy,
+              ticketsHandled: 0,
+              resolvedTickets: 0,
+              totalResponseTime: 0,
+              ticketsWithResponse: 0,
+              lastActive: null,
+              name: null, //added
+            });
+          }
+
           const member = supportMembers.get(ticket.claimedBy);
           member.ticketsHandled++;
 
@@ -471,15 +464,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
 
           if (ticket.messages?.length > 1) {
-            const firstMessage = new Date(ticket.messages[0].createdAt);
-            const firstResponse = new Date(ticket.messages[1].createdAt);
-            member.totalResponseTime += firstResponse.getTime() - firstMessage.getTime();
-            member.ticketsWithResponse++;
+            const firstMessage = ticket.messages[0];
+            const firstResponse = ticket.messages[1];
+            if (firstMessage && firstResponse) {
+              member.totalResponseTime += new Date(firstResponse.createdAt).getTime() - new Date(firstMessage.createdAt).getTime();
+              member.ticketsWithResponse++;
+            }
 
-            // Update last active
-            const lastMessageDate = new Date(ticket.messages[ticket.messages.length - 1].createdAt);
-            if (!member.lastActive || lastMessageDate > member.lastActive) {
-              member.lastActive = lastMessageDate;
+            // Update last active time
+            const messages = ticket.messages;
+            if (messages.length > 0) {
+              const lastMessageTime = new Date(messages[messages.length - 1].createdAt);
+              if (!member.lastActive || lastMessageTime > member.lastActive) {
+                member.lastActive = lastMessageTime;
+                // Update username from the last message
+                member.name = messages[messages.length - 1].username;
+              }
             }
           }
         }
@@ -488,8 +488,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Calculate final stats for each member
       const stats = Array.from(supportMembers.values()).map(member => ({
         id: member.id,
-        name: member.name,
-        roleType: member.roleType,
+        name: member.name || 'Unknown User',
+        roleType: server.ticketManagerRoleId === member.id ? 'manager' : 'support',
         ticketsHandled: member.ticketsHandled,
         avgResponseTime: member.ticketsWithResponse > 0 
           ? Math.round(member.totalResponseTime / member.ticketsWithResponse / (1000 * 60))
