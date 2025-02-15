@@ -47,8 +47,8 @@ export default function ServerDashboard() {
         </div>
       </div>
 
-      <Tabs defaultValue="tickets">
-        <TabsList>
+      <Tabs defaultValue="tickets" className="h-[calc(100vh-12rem)] overflow-auto">
+        <TabsList className="sticky top-0 bg-background z-10">
           <TabsTrigger value="tickets">Tickets</TabsTrigger>
           <TabsTrigger value="panels">Ticket Panels</TabsTrigger>
           <TabsTrigger value="statistics">Statistics</TabsTrigger>
