@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
-import { insertTicketSchema, insertMessageSchema, insertServerSchema } from "@shared/schema";
+import { insertTicketSchema, insertServerSchema } from "@shared/schema";
 import { 
   setupDiscordBot, 
   getServerChannels, 
@@ -185,36 +185,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Ticket not found' });
       }
 
-      const server = await storage.getServer(ticket.serverId);
+      const server = await storage.getServer(ticket.serverId!);
       if (!server) {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      const message = await storage.createMessage({
-        ...insertMessageSchema.parse(req.body),
-        ticketId: ticketId,
+      // Create message schema for validation
+      const messageSchema = z.object({
+        content: z.string().min(1, "Message content is required"),
+      });
+
+      const { content } = messageSchema.parse(req.body);
+
+      // Get existing messages
+      const existingMessages = ticket.messages || [];
+      const newMessage = {
+        id: existingMessages.length + 1,
+        content,
+        userId: req.user.id,
+        username: req.user.username,
+        createdAt: new Date(),
+      };
+
+      // Update ticket with new message
+      await storage.updateTicket(ticketId, {
+        messages: [...existingMessages, newMessage],
       });
 
       // Send webhook message if the user is support staff
       if (server.ownerId === (req.user as any).id || server.claimedByUserId === (req.user as any).id) {
         await sendWebhookMessage(
           ticket.channelId!,
-          message.content,
+          content,
           (req.user as any).username,
-          server.anonymousMode,
+          server.anonymousMode || false,
           server.webhookAvatar,
           (req.user as any).avatarUrl
         );
       }
 
-      res.json(message);
+      res.json(newMessage);
     } catch (error) {
       console.error('Error creating message:', error);
       res.status(500).json({ message: 'Failed to create message' });
     }
   });
 
-  // Add these routes after the existing ticket routes
   app.get('/api/tickets/:ticketId', requireAuth, async (req, res) => {
     try {
       const ticket = await storage.getTicket(parseInt(req.params.ticketId));
@@ -353,8 +369,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Not authorized' });
       }
 
+      // Get roles from Discord
       const roles = await getServerRoles(server.discordId);
-      res.json(roles || []);
+
+      // Filter out @everyone role and format the response
+      const filteredRoles = roles.filter(role => role.name !== '@everyone').map(role => ({
+        id: role.id,
+        name: role.name,
+      }));
+
+      res.json(filteredRoles || []);
     } catch (error) {
       console.error('Error fetching roles:', error);
       res.status(500).json({ 
@@ -404,24 +428,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Not authorized' });
       }
 
-      // Get all tickets for this server
+      // Get all tickets and panels for this server
       const tickets = await storage.getTicketsByServerId(server.id);
+      const panels = await storage.getPanelsByServerId(server.id);
 
-      // Get unique support team members who have claimed tickets
+      // Get Discord roles information
+      const roles = await getServerRoles(server.discordId);
+
+      // Collect all support role IDs
+      const supportRoleIds = new Set<string>();
+      if (server.ticketManagerRoleId) {
+        supportRoleIds.add(server.ticketManagerRoleId);
+      }
+      panels.forEach(panel => {
+        panel.supportRoleIds.forEach(roleId => supportRoleIds.add(roleId));
+      });
+
+      // Create a map of role IDs to role names
+      const roleMap = new Map(roles.map(role => [role.id, role.name]));
+
+      // Initialize stats for each support role
       const supportMembers = new Map();
-      tickets.forEach(ticket => {
-        if (ticket.claimedBy) {
-          if (!supportMembers.has(ticket.claimedBy)) {
-            supportMembers.set(ticket.claimedBy, {
-              id: ticket.claimedBy,
-              name: ticket.claimedBy,
-              ticketsHandled: 0,
-              resolvedTickets: 0,
-              totalResponseTime: 0,
-              ticketsWithResponse: 0,
-            });
-          }
 
+      // Add entries for all roles that could handle tickets
+      supportRoleIds.forEach(roleId => {
+        const roleName = roleMap.get(roleId) || 'Unknown Role';
+        const roleType = roleId === server.ticketManagerRoleId ? 'manager' : 'support';
+
+        supportMembers.set(roleId, {
+          id: roleId,
+          name: roleName,
+          roleType,
+          ticketsHandled: 0,
+          resolvedTickets: 0,
+          totalResponseTime: 0,
+          ticketsWithResponse: 0,
+          lastActive: null,
+        });
+      });
+
+      // Process ticket data
+      tickets.forEach(ticket => {
+        if (ticket.claimedBy && supportMembers.has(ticket.claimedBy)) {
           const member = supportMembers.get(ticket.claimedBy);
           member.ticketsHandled++;
 
@@ -429,13 +477,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
             member.resolvedTickets++;
           }
 
-          // Calculate response time if messages are available
-          const messages = ticket.messages || [];
-          if (messages.length > 1) {
-            const firstMessage = new Date(messages[0].createdAt);
-            const firstResponse = new Date(messages[1].createdAt);
+          if (ticket.messages?.length > 1) {
+            const firstMessage = new Date(ticket.messages[0].createdAt);
+            const firstResponse = new Date(ticket.messages[1].createdAt);
             member.totalResponseTime += firstResponse.getTime() - firstMessage.getTime();
             member.ticketsWithResponse++;
+
+            // Update last active
+            const lastMessageDate = new Date(ticket.messages[ticket.messages.length - 1].createdAt);
+            if (!member.lastActive || lastMessageDate > member.lastActive) {
+              member.lastActive = lastMessageDate;
+            }
           }
         }
       });
@@ -444,6 +496,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const stats = Array.from(supportMembers.values()).map(member => ({
         id: member.id,
         name: member.name,
+        roleType: member.roleType,
         ticketsHandled: member.ticketsHandled,
         avgResponseTime: member.ticketsWithResponse > 0 
           ? Math.round(member.totalResponseTime / member.ticketsWithResponse / (1000 * 60))
@@ -451,6 +504,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         resolutionRate: member.ticketsHandled > 0
           ? Math.round((member.resolvedTickets / member.ticketsHandled) * 100)
           : 0,
+        lastActive: member.lastActive,
       }));
 
       res.json(stats);

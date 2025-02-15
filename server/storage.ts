@@ -1,10 +1,10 @@
 import { 
-  users, servers, tickets, messages, panels,
+  users, servers, tickets, panels,
   type User, type InsertUser, 
   type Server, type InsertServer,
   type Ticket, type InsertTicket,
-  type Message, type InsertMessage,
-  type Panel, type InsertPanel
+  type Panel, type InsertPanel,
+  type TicketMessage
 } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
@@ -29,10 +29,7 @@ export interface IStorage {
   getTicketsByServerId(serverId: number): Promise<Ticket[]>;
   createTicket(ticket: InsertTicket): Promise<Ticket>;
   updateTicket(id: number, ticket: Partial<Ticket>): Promise<Ticket>;
-
-  // Messages
-  getMessagesByTicketId(ticketId: number): Promise<Message[]>;
-  createMessage(message: InsertMessage): Promise<Message>;
+  getMessagesByTicketId(ticketId: number): Promise<TicketMessage[]>;
 
   // Panels
   getPanel(id: number): Promise<Panel | undefined>;
@@ -130,14 +127,10 @@ export class DatabaseStorage implements IStorage {
     return ticket;
   }
 
-  // Messages
-  async getMessagesByTicketId(ticketId: number): Promise<Message[]> {
-    return db.select().from(messages).where(eq(messages.ticketId, ticketId));
-  }
-
-  async createMessage(insertMessage: InsertMessage): Promise<Message> {
-    const [message] = await db.insert(messages).values(insertMessage).returning();
-    return message;
+  // Messages (now part of tickets)
+  async getMessagesByTicketId(ticketId: number): Promise<TicketMessage[]> {
+    const ticket = await this.getTicket(ticketId);
+    return ticket?.messages as TicketMessage[] || [];
   }
 
   // Panels

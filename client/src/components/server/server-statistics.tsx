@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useState } from "react";
-import type { Ticket } from "@shared/schema";
+import type { Ticket, SupportTeamMember } from "@shared/schema";
 import {
   BarChart,
   Bar,
@@ -24,6 +24,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { Badge } from "@/components/ui/badge";
 
 interface ServerStatisticsProps {
   serverId: number;
@@ -38,7 +39,7 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
   });
 
   // Get support team stats
-  const { data: supportStats } = useQuery({
+  const { data: supportStats } = useQuery<SupportTeamMember[]>({
     queryKey: [`/api/servers/${serverId}/support-stats`],
   });
 
@@ -117,25 +118,49 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
           <CardDescription>Individual support member statistics</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {supportStats?.map((member: any) => (
-              <div key={member.id} className="flex items-center justify-between border-b pb-4">
-                <div>
-                  <h4 className="font-medium">{member.name}</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Tickets handled: {member.ticketsHandled}
-                  </p>
+          <div className="space-y-6">
+            {!supportStats || supportStats.length === 0 ? (
+              <p className="text-muted-foreground">No support team activity recorded yet.</p>
+            ) : (
+              supportStats.map((member) => (
+                <div key={member.id} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium flex items-center gap-2">
+                        {member.name}
+                        <Badge variant={member.roleType === 'manager' ? 'default' : 'secondary'}>
+                          {member.roleType === 'manager' ? 'Manager' : 'Support'}
+                        </Badge>
+                      </h4>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {member.lastActive ? (
+                        `Last active: ${new Date(member.lastActive).toLocaleDateString()}`
+                      ) : (
+                        'Not active yet'
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-muted rounded-lg p-3">
+                      <div className="text-sm font-medium">Tickets Handled</div>
+                      <div className="text-2xl">{member.ticketsHandled}</div>
+                    </div>
+
+                    <div className="bg-muted rounded-lg p-3">
+                      <div className="text-sm font-medium">Avg. Response Time</div>
+                      <div className="text-2xl">{formatTime(member.avgResponseTime)}</div>
+                    </div>
+
+                    <div className="bg-muted rounded-lg p-3">
+                      <div className="text-sm font-medium">Resolution Rate</div>
+                      <div className="text-2xl">{member.resolutionRate}%</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm">
-                    Avg. response time: {formatTime(member.avgResponseTime)}
-                  </p>
-                  <p className="text-sm">
-                    Resolution rate: {member.resolutionRate}%
-                  </p>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </CardContent>
       </Card>
@@ -143,7 +168,7 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
   );
 }
 
-function StatsCard({ title, value, description }: { 
+function StatsCard({ title, value, description }: {
   title: string;
   value: string | number;
   description: string;
@@ -164,7 +189,7 @@ function StatsCard({ title, value, description }: {
 function calculateAverageResponseTime(tickets: Ticket[]): number {
   const ticketsWithResponses = tickets.filter(ticket => {
     const messages = ticket.messages || [];
-    return messages.length > 1; // At least one response after initial ticket creation
+    return messages.length >= 2;
   });
 
   if (ticketsWithResponses.length === 0) return 0;
@@ -173,28 +198,27 @@ function calculateAverageResponseTime(tickets: Ticket[]): number {
     const messages = ticket.messages || [];
     if (messages.length < 2) return total;
 
-    const firstMessage = new Date(messages[0].createdAt);
-    const firstResponse = new Date(messages[1].createdAt);
-    return total + (firstResponse.getTime() - firstMessage.getTime());
+    const firstMessage = messages[0].createdAt;
+    const firstResponse = messages[1].createdAt;
+    return total + (new Date(firstResponse).getTime() - new Date(firstMessage).getTime());
   }, 0);
 
-  return Math.round(totalResponseTime / ticketsWithResponses.length / (1000 * 60)); // Convert to minutes
+  return Math.round(totalResponseTime / ticketsWithResponses.length / (1000 * 60));
 }
 
 function calculateAverageResolutionTime(tickets: Ticket[]): number {
   const resolvedTickets = tickets.filter(ticket => 
-    ticket.status === "closed" && ticket.closedAt
+    ticket.status === "closed" && ticket.closedAt && ticket.createdAt
   );
 
   if (resolvedTickets.length === 0) return 0;
 
   const totalResolutionTime = resolvedTickets.reduce((total, ticket) => {
-    const createdAt = new Date(ticket.createdAt);
-    const closedAt = new Date(ticket.closedAt!);
-    return total + (closedAt.getTime() - createdAt.getTime());
+    if (!ticket.createdAt || !ticket.closedAt) return total;
+    return total + (new Date(ticket.closedAt).getTime() - new Date(ticket.createdAt).getTime());
   }, 0);
 
-  return Math.round(totalResolutionTime / resolvedTickets.length / (1000 * 60)); // Convert to minutes
+  return Math.round(totalResolutionTime / resolvedTickets.length / (1000 * 60));
 }
 
 function formatTime(minutes: number): string {
@@ -219,9 +243,10 @@ function getTicketActivityData(tickets: Ticket[], timeframe: string) {
 
   // Count tickets per date
   const ticketCounts = dates.map(date => {
-    const count = tickets.filter(ticket => 
-      new Date(ticket.createdAt).toLocaleDateString() === date
-    ).length;
+    const count = tickets.filter(ticket => {
+      if (!ticket.createdAt) return false;
+      return new Date(ticket.createdAt).toLocaleDateString() === date;
+    }).length;
 
     return {
       date,

@@ -412,9 +412,9 @@ async function closeTicket(interaction: ButtonInteraction, ticketId: number) {
   }
 }
 
-async function claimTicket(interaction: ButtonInteraction, ticketId: string) {
+async function claimTicket(interaction: ButtonInteraction, ticketId: number) {
   try {
-    const ticket = await storage.getTicket(parseInt(ticketId));
+    const ticket = await storage.getTicket(ticketId);
     if (!ticket) {
       await interaction.reply({
         content: 'This ticket no longer exists.',
@@ -471,9 +471,12 @@ async function handleTicketCommand(interaction: ChatInputCommandInteraction) {
 
     const ticket = await storage.createTicket({
       serverId: server.id,
-      userId: null,
+      userId: interaction.user.id,
       title,
       status: "open",
+      channelId: null,
+      panelId: null,
+      number: 0,
     });
 
     // Create Discord channel for ticket
@@ -483,9 +486,9 @@ async function handleTicketCommand(interaction: ChatInputCommandInteraction) {
       reason: `Ticket created by ${interaction.user.tag}`
     });
 
-    if (channel && channel instanceof TextChannel) {
+    if (channel) {
       await storage.updateTicket(ticket.id, {
-        discordChannelId: channel.id,
+        channelId: channel.id,
       });
 
       await channel.send({

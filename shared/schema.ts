@@ -56,20 +56,23 @@ export const tickets = pgTable("tickets", {
   createdAt: timestamp("created_at").defaultNow(),
   closedAt: timestamp("closed_at"),
   closedBy: text("closed_by"),
+  messages: text("messages").array(),
 });
 
-export const messages = pgTable("messages", {
-  id: serial("id").primaryKey(),
-  ticketId: integer("ticket_id").references(() => tickets.id),
-  userId: integer("user_id").references(() => users.id),
-  content: text("content").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+// Extend type for messages to include Discord usernames
+export type TicketMessage = {
+  id: number;
+  content: string;
+  userId: string;
+  username: string;
+  createdAt: Date;
+};
 
 // Custom types for statistics
 export type SupportTeamMember = {
   id: string;
   name: string;
+  roleType: 'manager' | 'support' | 'both';
   ticketsHandled: number;
   avgResponseTime: number;
   resolutionRate: number;
@@ -87,9 +90,9 @@ export type ServerStats = {
   topCategories: { category: string; count: number }[];
 };
 
+// Relations
 export const userRelations = relations(users, ({ many }) => ({
   servers: many(servers),
-  messages: many(messages),
 }));
 
 export const serverRelations = relations(servers, ({ one, many }) => ({
@@ -119,31 +122,18 @@ export const ticketRelations = relations(tickets, ({ one }) => ({
   }),
 }));
 
-export const messageRelations = relations(messages, ({ one }) => ({
-  ticket: one(tickets, {
-    fields: [messages.ticketId],
-    references: [tickets.id],
-  }),
-  user: one(users, {
-    fields: [messages.userId],
-    references: [users.id],
-  }),
-}));
-
+// Insert schemas and types
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertServerSchema = createInsertSchema(servers).omit({ id: true });
 export const insertPanelSchema = createInsertSchema(panels).omit({ id: true });
 export const insertTicketSchema = createInsertSchema(tickets).omit({ id: true, createdAt: true, closedAt: true });
-export const insertMessageSchema = createInsertSchema(messages).omit({ id: true, createdAt: true });
 
 export type User = typeof users.$inferSelect;
 export type Server = typeof servers.$inferSelect;
 export type Panel = typeof panels.$inferSelect;
 export type Ticket = typeof tickets.$inferSelect;
-export type Message = typeof messages.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertServer = z.infer<typeof insertServerSchema>;
 export type InsertPanel = z.infer<typeof insertPanelSchema>;
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
-export type InsertMessage = z.infer<typeof insertMessageSchema>;
