@@ -169,8 +169,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get('/api/servers/:serverId/tickets', requireAuth, async (req, res) => {
-    const tickets = await storage.getTicketsByServerId(parseInt(req.params.serverId));
-    res.json(tickets);
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      // Check if user has ticket manager role
+      const hasManagerRole = server.ticketManagerRoleId === (req.user as any).discordId;
+
+      // If user is not a ticket manager, only return open tickets
+      const tickets = await storage.getTicketsByServerId(parseInt(req.params.serverId));
+      const filteredTickets = hasManagerRole ? tickets : tickets.filter(ticket => ticket.status === 'open');
+
+      res.json(filteredTickets);
+    } catch (error) {
+      console.error('Error fetching tickets:', error);
+      res.status(500).json({ message: 'Failed to fetch tickets' });
+    }
   });
 
   app.post('/api/servers/:serverId/tickets', requireAuth, async (req, res) => {

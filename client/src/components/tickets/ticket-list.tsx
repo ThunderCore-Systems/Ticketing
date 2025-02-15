@@ -17,8 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertCircle } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { MessageSquare } from "lucide-react";
 import type { Ticket, Panel, Server } from "@shared/schema";
 
 interface TicketListProps {
@@ -39,6 +38,7 @@ export default function TicketList({ serverId }: TicketListProps) {
     queryKey: [`/api/servers/${serverId}`]
   });
 
+  // Get tickets - backend now handles filtering based on role
   const { data: tickets } = useQuery<Ticket[]>({ 
     queryKey: [`/api/servers/${serverId}/tickets`]
   });
@@ -52,17 +52,12 @@ export default function TicketList({ serverId }: TicketListProps) {
   }
 
   // Check if user is a ticket manager
-  const isTicketManager = server.ticketManagerRoleId && 
-    user.roles?.includes(server.ticketManagerRoleId);
+  const isTicketManager = server.ticketManagerRoleId === user.discordId;
 
-  // Filter tickets based on status and permissions
-  const visibleTickets = tickets.filter(ticket => 
-    isTicketManager ? true : ticket.status === "open"
-  );
-
+  // Filter tickets based on selected panel
   const filteredTickets = selectedPanelId === "all" 
-    ? visibleTickets
-    : visibleTickets.filter(ticket => ticket.panelId === parseInt(selectedPanelId));
+    ? tickets
+    : tickets.filter(ticket => ticket.panelId === parseInt(selectedPanelId));
 
   return (
     <div className="space-y-4">
@@ -83,16 +78,6 @@ export default function TicketList({ serverId }: TicketListProps) {
             ))}
           </SelectContent>
         </Select>
-
-        {!isTicketManager && (
-          <Alert variant="info" className="max-w-md">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Note</AlertTitle>
-            <AlertDescription>
-              Only open tickets are shown. Contact an administrator if you need to view closed tickets.
-            </AlertDescription>
-          </Alert>
-        )}
       </div>
 
       <Table>
@@ -140,7 +125,7 @@ export default function TicketList({ serverId }: TicketListProps) {
           {filteredTickets.length === 0 && (
             <TableRow>
               <TableCell colSpan={5} className="text-center text-muted-foreground">
-                No tickets found
+                {isTicketManager ? 'No tickets found' : 'No open tickets found'}
               </TableCell>
             </TableRow>
           )}
