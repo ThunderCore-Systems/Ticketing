@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { DragDropContext, Droppable, Draggable } from "react-beautiful-dnd";
 import {
   Card,
   CardContent,
@@ -33,7 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { PlusCircle, X, Edit, Trash2, RefreshCw, GripVertical } from "lucide-react";
+import { PlusCircle, X, Edit, Trash2, RefreshCw, GripVertical, FolderPlus } from "lucide-react";
 
 interface FormField {
   id: string;
@@ -61,7 +62,12 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [panelToDelete, setPanelToDelete] = useState<number | null>(null);
 
-  // New form-related state
+  // New group-related state
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupDescription, setNewGroupDescription] = useState("");
+  const [showNewGroupForm, setShowNewGroupForm] = useState(false);
+
+  // Form fields state
   const [formEnabled, setFormEnabled] = useState(false);
   const [formFields, setFormFields] = useState<FormField[]>([]);
   const [newFieldLabel, setNewFieldLabel] = useState("");
@@ -69,7 +75,7 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
   const [newFieldRequired, setNewFieldRequired] = useState(true);
   const [newFieldOptions, setNewFieldOptions] = useState("");
 
-  // Fetch Discord server data
+  // Fetch Discord server data and panels data
   const { data: channels } = useQuery({
     queryKey: [`/api/servers/${serverId}/channels`],
   });
@@ -85,6 +91,67 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
   const { data: panels } = useQuery({
     queryKey: [`/api/servers/${serverId}/panels`],
   });
+
+  const { data: groups } = useQuery({
+    queryKey: [`/api/servers/${serverId}/panel-groups`],
+  });
+
+  // Group mutations
+  const createGroup = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(
+        "POST",
+        `/api/servers/${serverId}/panel-groups`,
+        {
+          name: newGroupName,
+          description: newGroupDescription,
+          serverId,
+        }
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      setShowNewGroupForm(false);
+      setNewGroupName("");
+      setNewGroupDescription("");
+      queryClient.invalidateQueries({
+        queryKey: [`/api/servers/${serverId}/panel-groups`],
+      });
+      toast({
+        title: "Group Created",
+        description: "Panel group has been created successfully.",
+      });
+    },
+  });
+
+  // Panel order mutation
+  const updatePanelOrder = useMutation({
+    mutationFn: async ({ panelId, order, groupId }: { panelId: number; order: number; groupId?: number | null }) => {
+      const res = await apiRequest(
+        "PATCH",
+        `/api/servers/${serverId}/panels/${panelId}/order`,
+        { order, groupId }
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/servers/${serverId}/panels`],
+      });
+    },
+  });
+
+  const onDragEnd = (result: any) => {
+    if (!result.destination) return;
+
+    const panelId = parseInt(result.draggableId.replace('panel-', ''));
+    const groupId = result.destination.droppableId === 'ungrouped' 
+      ? null 
+      : parseInt(result.destination.droppableId.replace('group-', ''));
+    const newOrder = result.destination.index;
+
+    updatePanelOrder.mutate({ panelId, order: newOrder, groupId });
+  };
 
   const updatePanel = useMutation({
     mutationFn: async (panelId: number) => {
@@ -218,7 +285,6 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
     setSupportRoleIds(panel.supportRoleIds);
     setPrefix(panel.prefix);
     setTranscriptChannelId(panel.transcriptChannelId || "");
-    // Properly set form state
     setFormEnabled(panel.formEnabled || false);
     setFormFields(panel.formFields || []);
     setEditingPanel(panel.id);
@@ -578,70 +644,249 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
         </CardFooter>
       </Card>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {panels?.map((panel) => (
-          <Card key={panel.id}>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            Panel Groups
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowNewGroupForm(true)}
+            >
+              <FolderPlus className="h-4 w-4 mr-2" />
+              New Group
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        {showNewGroupForm && (
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Group Name</Label>
+              <Input
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                placeholder="Enter group name..."
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                value={newGroupDescription}
+                onChange={(e) => setNewGroupDescription(e.target.value)}
+                placeholder="Enter group description..."
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => createGroup.mutate()}
+                disabled={!newGroupName}
+              >
+                Create Group
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setShowNewGroupForm(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      <DragDropContext onDragEnd={onDragEnd}>
+        {groups?.map((group) => (
+          <Card key={group.id} className="mb-4">
             <CardHeader>
-              <CardTitle>{panel.title}</CardTitle>
-              <CardDescription>{panel.description}</CardDescription>
+              <CardTitle>{group.name}</CardTitle>
+              <CardDescription>{group.description}</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-2 text-sm">
-                <p>Prefix: {panel.prefix}</p>
-                <p>Channel: #{channels?.find((c) => c.id === panel.channelId)?.name}</p>
-                <p>Category: {categories?.find((c) => c.id === panel.categoryId)?.name}</p>
-                {panel.transcriptChannelId && (
-                  <p>
-                    Transcript Channel:{" "}
-                    #{channels?.find((c) => c.id === panel.transcriptChannelId)?.name}
-                  </p>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <span>Support Roles:</span>
-                  {panel.supportRoleIds.map((roleId) => (
-                    <Badge key={roleId} variant="secondary">
-                      @{roles?.find((r) => r.id === roleId)?.name}
-                    </Badge>
-                  ))}
-                </div>
-                {panel.formEnabled && (
-                  <div>
-                    <p>Form Enabled: Yes</p>
-                    <p>Form Fields: {JSON.stringify(panel.formFields)}</p> {/*Temporary Display for testing*/}
+            <Droppable droppableId={`group-${group.id}`}>
+              {(provided) => (
+                <CardContent
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                  className="space-y-4"
+                >
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {panels
+                      ?.filter((panel) => panel.groupId === group.id)
+                      .sort((a, b) => a.order - b.order)
+                      .map((panel, index) => (
+                        <Draggable
+                          key={panel.id}
+                          draggableId={`panel-${panel.id}`}
+                          index={index}
+                        >
+                          {(provided) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                            >
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle>{panel.title}</CardTitle>
+                                  <CardDescription>{panel.description}</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="space-y-2 text-sm">
+                                    <p>Prefix: {panel.prefix}</p>
+                                    <p>Channel: #{channels?.find((c) => c.id === panel.channelId)?.name}</p>
+                                    <p>Category: {categories?.find((c) => c.id === panel.categoryId)?.name}</p>
+                                    {panel.transcriptChannelId && (
+                                      <p>
+                                        Transcript Channel:{" "}
+                                        #{channels?.find((c) => c.id === panel.transcriptChannelId)?.name}
+                                      </p>
+                                    )}
+                                    <div className="flex flex-wrap gap-2">
+                                      <span>Support Roles:</span>
+                                      {panel.supportRoleIds.map((roleId) => (
+                                        <Badge key={roleId} variant="secondary">
+                                          @{roles?.find((r) => r.id === roleId)?.name}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                    {panel.formEnabled && (
+                                      <div>
+                                        <p>Form Enabled: Yes</p>
+                                        <p>Form Fields: {JSON.stringify(panel.formFields)}</p>
+                                      </div>
+                                    )}
+                                  </div>
+                                </CardContent>
+                                <CardFooter className="flex gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleEditClick(panel)}
+                                  >
+                                    <Edit className="h-4 w-4 mr-1" />
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => resendPanel.mutate(panel.id)}
+                                    disabled={resendPanel.isPending}
+                                  >
+                                    <RefreshCw className="h-4 w-4 mr-1" />
+                                    Resend
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDeleteClick(panel.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-1" />
+                                    Delete
+                                  </Button>
+                                </CardFooter>
+                              </Card>
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
                   </div>
-                )}
-              </div>
-            </CardContent>
-            <CardFooter className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleEditClick(panel)}
-              >
-                <Edit className="h-4 w-4 mr-1" />
-                Edit
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => resendPanel.mutate(panel.id)}
-                disabled={resendPanel.isPending}
-              >
-                <RefreshCw className="h-4 w-4 mr-1" />
-                Resend
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleDeleteClick(panel.id)}
-              >
-                <Trash2 className="h-4 w-4 mr-1" />
-                Delete
-              </Button>
-            </CardFooter>
+                  {provided.placeholder}
+                </CardContent>
+              )}
+            </Droppable>
           </Card>
         ))}
-      </div>
+
+        <Droppable droppableId="ungrouped">
+          {(provided) => (
+            <div
+              ref={provided.innerRef}
+              {...provided.droppableProps}
+              className="grid gap-4 md:grid-cols-2"
+            >
+              {panels
+                ?.filter((panel) => !panel.groupId)
+                .sort((a, b) => a.order - b.order)
+                .map((panel, index) => (
+                  <Draggable
+                    key={panel.id}
+                    draggableId={`panel-${panel.id}`}
+                    index={index}
+                  >
+                    {(provided) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.draggableProps}
+                        {...provided.dragHandleProps}
+                      >
+                        <Card>
+                          <CardHeader>
+                            <CardTitle>{panel.title}</CardTitle>
+                            <CardDescription>{panel.description}</CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-2 text-sm">
+                              <p>Prefix: {panel.prefix}</p>
+                              <p>Channel: #{channels?.find((c) => c.id === panel.channelId)?.name}</p>
+                              <p>Category: {categories?.find((c) => c.id === panel.categoryId)?.name}</p>
+                              {panel.transcriptChannelId && (
+                                <p>
+                                  Transcript Channel:{" "}
+                                  #{channels?.find((c) => c.id === panel.transcriptChannelId)?.name}
+                                </p>
+                              )}
+                              <div className="flex flex-wrap gap-2">
+                                <span>Support Roles:</span>
+                                {panel.supportRoleIds.map((roleId) => (
+                                  <Badge key={roleId} variant="secondary">
+                                    @{roles?.find((r) => r.id === roleId)?.name}
+                                  </Badge>
+                                ))}
+                              </div>
+                              {panel.formEnabled && (
+                                <div>
+                                  <p>Form Enabled: Yes</p>
+                                  <p>Form Fields: {JSON.stringify(panel.formFields)}</p>
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                          <CardFooter className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditClick(panel)}
+                            >
+                              <Edit className="h-4 w-4 mr-1" />
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => resendPanel.mutate(panel.id)}
+                              disabled={resendPanel.isPending}
+                            >
+                              <RefreshCw className="h-4 w-4 mr-1" />
+                              Resend
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteClick(panel.id)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-1" />
+                              Delete
+                            </Button>
+                          </CardFooter>
+                        </Card>
+                      </div>
+                    )}
+                  </Draggable>
+                ))}
+              {provided.placeholder}
+            </div>
+          )}
+        </Droppable>
+      </DragDropContext>
 
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent>
