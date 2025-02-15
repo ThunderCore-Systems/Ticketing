@@ -121,11 +121,16 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
     },
   });
 
+  // Update the updateTicketStatus mutation
   const updateTicketStatus = useMutation({
     mutationFn: async (status: string) => {
       const res = await apiRequest("PATCH", `/api/tickets/${ticketId}`, {
         status,
       });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to update ticket status');
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -137,19 +142,24 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         description: `Ticket has been ${ticket?.status === 'open' ? 'closed' : 'reopened'}.`,
       });
     },
-    onError: (err) => {
+    onError: (err: Error) => {
       console.error("Error updating ticket status:", err);
       toast({
         title: "Error",
-        description: "Failed to update ticket status. Please try again.",
+        description: err.message || "Failed to update ticket status. Please try again.",
         variant: "destructive",
       });
     }
   });
 
+  // Update the claimTicket mutation
   const claimTicket = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/tickets/${ticketId}/claim`);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to claim ticket');
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -157,36 +167,41 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         queryKey: [`/api/tickets/${ticketId}`]
       });
       toast({
-        title: "Ticket claimed",
+        title: "Success",
         description: ticket?.claimedBy ? "You have unclaimed this ticket." : "You have claimed this ticket.",
       });
     },
-    onError: (err) => {
+    onError: (err: Error) => {
       console.error("Error claiming ticket:", err);
       toast({
         title: "Error",
-        description: "Failed to claim ticket. Please try again.",
+        description: err.message || "Failed to claim ticket. Please try again.",
         variant: "destructive",
       });
     }
   });
 
+  // Update the saveTranscript mutation
   const saveTranscript = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/tickets/${ticketId}/transcript`);
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to save transcript');
+      }
       return res.json();
     },
     onSuccess: () => {
       toast({
-        title: "Transcript saved",
+        title: "Success",
         description: "Ticket transcript has been saved and sent to the configured channel.",
       });
     },
-    onError: (err) => {
+    onError: (err: Error) => {
       console.error("Error saving transcript:", err);
       toast({
         title: "Error",
-        description: "Failed to save transcript. Please try again.",
+        description: err.message || "Failed to save transcript. Please try again.",
         variant: "destructive",
       });
     }
@@ -213,38 +228,16 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
     }
   });
 
-  const addUser = useMutation({
-    mutationFn: async (userId: string) => {
-      const res = await apiRequest("POST", `/api/tickets/${ticketId}/add-user`, {
-        userId,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      setIsAddUserOpen(false);
-      queryClient.invalidateQueries({
-        queryKey: [`/api/tickets/${ticketId}`]
-      });
-      toast({
-        title: "User added",
-        description: "User has been added to the ticket.",
-      });
-    },
-    onError: (err) => {
-      console.error("Error adding user:", err);
-      toast({
-        title: "Error",
-        description: "Failed to add user. Please try again.",
-        variant: "destructive",
-      });
-    }
-  });
-
+  // Update other mutations with similar error handling...
   const removeUser = useMutation({
     mutationFn: async (userId: string) => {
       const res = await apiRequest("POST", `/api/tickets/${ticketId}/remove-user`, {
         userId,
       });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to remove user');
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -253,15 +246,15 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         queryKey: [`/api/tickets/${ticketId}`]
       });
       toast({
-        title: "User removed",
+        title: "Success",
         description: "User has been removed from the ticket.",
       });
     },
-    onError: (err) => {
+    onError: (err: Error) => {
       console.error("Error removing user:", err);
       toast({
         title: "Error",
-        description: "Failed to remove user. Please try again.",
+        description: err.message || "Failed to remove user. Please try again.",
         variant: "destructive",
       });
     }
@@ -272,6 +265,10 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
       const res = await apiRequest("POST", `/api/tickets/${ticketId}/upgrade`, {
         roleId,
       });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to upgrade ticket');
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -280,15 +277,15 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         queryKey: [`/api/tickets/${ticketId}`]
       });
       toast({
-        title: "Ticket upgraded",
+        title: "Success",
         description: "Ticket has been upgraded to include the selected role.",
       });
     },
-    onError: (err) => {
+    onError: (err: Error) => {
       console.error("Error upgrading ticket:", err);
       toast({
         title: "Error",
-        description: "Failed to upgrade ticket. Please try again.",
+        description: err.message || "Failed to upgrade ticket. Please try again.",
         variant: "destructive",
       });
     }

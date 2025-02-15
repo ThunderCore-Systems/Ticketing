@@ -9,7 +9,9 @@ import {
   getServerCategories, 
   getServerRoles,
   createTicketPanel,
-  sendWebhookMessage
+  sendWebhookMessage,
+  client,
+  validateRoleId
 } from "./discord";
 import { setupStripeWebhooks, createSubscription } from "./stripe";
 import session from "express-session";
@@ -300,7 +302,171 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Add these new ticket management routes after the existing ticket routes
+
+  // Add this new ticket management routes after the existing ticket routes
+  app.post('/api/tickets/:ticketId/claim', requireAuth, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const ticket = await storage.getTicket(ticketId);
+
+      if (!ticket) {
+        return res.status(404).json({ message: 'Ticket not found' });
+      }
+
+      const server = await storage.getServer(ticket.serverId);
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Verify user permission
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      // Toggle claim status
+      const updatedTicket = await storage.updateTicket(ticketId, {
+        claimedBy: ticket.claimedBy === (req.user as any).discordId ? null : (req.user as any).discordId
+      });
+
+      // Send webhook message
+      if (ticket.channelId) {
+        const embed = new EmbedBuilder()
+          .setTitle(updatedTicket.claimedBy ? 'Ticket Claimed' : 'Ticket Unclaimed')
+          .setDescription(updatedTicket.claimedBy ? 
+            `Ticket claimed by <@${updatedTicket.claimedBy}>` :
+            'Ticket is now unclaimed')
+          .setColor(updatedTicket.claimedBy ? 0x00FF00 : 0xFF0000)
+          .setTimestamp();
+
+        await sendWebhookMessage(
+          ticket.channelId,
+          '',
+          (req.user as any).username,
+          server.anonymousMode || false,
+          server.webhookAvatar,
+          (req.user as any).avatarUrl,
+          [embed]
+        );
+      }
+
+      res.json(updatedTicket);
+    } catch (error) {
+      console.error('Error claiming ticket:', error);
+      res.status(500).json({ message: 'Failed to claim ticket' });
+    }
+  });
+
+  app.post('/api/tickets/:ticketId/transcript', requireAuth, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const ticket = await storage.getTicket(ticketId);
+
+      if (!ticket) {
+        return res.status(404).json({ message: 'Ticket not found' });
+      }
+
+      const server = await storage.getServer(ticket.serverId);
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Verify user permission
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      if (!ticket.channelId) {
+        return res.status(400).json({ message: 'No Discord channel associated with this ticket' });
+      }
+
+      // Send transcript message
+      const messages = await storage.getMessagesByTicketId(ticketId);
+      const transcriptText = messages.map(msg => {
+        const message = typeof msg === 'string' ? JSON.parse(msg) : msg;
+        return `${message.username} (${message.source}): ${message.content}`;
+      }).join('\n');
+
+      const embed = new EmbedBuilder()
+        .setTitle('Ticket Transcript')
+        .setDescription('Transcript saved')
+        .setColor(0x00FF00)
+        .setTimestamp();
+
+      await sendWebhookMessage(
+        ticket.channelId,
+        transcriptText,
+        (req.user as any).username,
+        server.anonymousMode || false,
+        server.webhookAvatar,
+        (req.user as any).avatarUrl,
+        [embed]
+      );
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error saving transcript:', error);
+      res.status(500).json({ message: 'Failed to save transcript' });
+    }
+  });
+
+  app.patch('/api/tickets/:ticketId', requireAuth, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const ticket = await storage.getTicket(ticketId);
+
+      if (!ticket) {
+        return res.status(404).json({ message: 'Ticket not found' });
+      }
+
+      const server = await storage.getServer(ticket.serverId);
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Verify user permission
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const status = req.body.status;
+      if (!status || !['open', 'closed'].includes(status)) {
+        return res.status(400).json({ message: 'Invalid status' });
+      }
+
+      const updatedTicket = await storage.updateTicket(ticketId, {
+        status,
+        closedAt: status === 'closed' ? new Date() : null,
+        closedBy: status === 'closed' ? (req.user as any).discordId : null
+      });
+
+      // Send webhook message
+      if (ticket.channelId) {
+        const embed = new EmbedBuilder()
+          .setTitle(status === 'closed' ? 'Ticket Closed' : 'Ticket Reopened')
+          .setDescription(status === 'closed' ? 
+            `Ticket closed by <@${(req.user as any).discordId}>` :
+            `Ticket reopened by <@${(req.user as any).discordId}>`)
+          .setColor(status === 'closed' ? 0xFF0000 : 0x00FF00)
+          .setTimestamp();
+
+        await sendWebhookMessage(
+          ticket.channelId,
+          '',
+          (req.user as any).username,
+          server.anonymousMode || false,
+          server.webhookAvatar,
+          (req.user as any).avatarUrl,
+          [embed]
+        );
+      }
+
+      res.json(updatedTicket);
+    } catch (error) {
+      console.error('Error updating ticket:', error);
+      res.status(500).json({ message: 'Failed to update ticket' });
+    }
+  });
+
   app.post('/api/tickets/:ticketId/remove-user', requireAuth, async (req, res) => {
     try {
       const ticketId = parseInt(req.params.ticketId);
@@ -699,7 +865,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (ticket.closedAt && ticket.createdAt) {
               const resolutionTime = new Date(ticket.closedAt).getTime() - new Date(ticket.createdAt).getTime();
               member.averageResolutionTime = 
-                (member.averageResolutionTime * (member.resolvedTickets - 1) + resolutionTime) / member.resolvedTickets;
+                (member.averageResolutionTime * (member.resolvedTickets - 1) +resolutionTime) / member.resolvedTickets;
             }
           }
 
