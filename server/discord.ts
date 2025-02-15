@@ -208,16 +208,21 @@ export async function createTicketPanel(
     description: string;
     prefix: string;
     categoryId: string;
-    supportRoleIds: string[]; // Changed to array
+    supportRoleIds: string[];
   }
 ) {
   if (!client) throw new Error('Discord bot is not initialized');
 
   try {
+    console.log('Fetching channel:', channelId);
     const channel = await client.channels.fetch(channelId);
     if (!channel || !(channel instanceof TextChannel)) {
-      throw new Error('Invalid channel');
+      throw new Error(`Invalid channel: ${channelId}`);
     }
+
+    const rolesMention = panel.supportRoleIds
+      .map(id => `<@&${id}>`)
+      .join(', ');
 
     const embed = new EmbedBuilder()
       .setTitle(panel.title)
@@ -225,9 +230,12 @@ export async function createTicketPanel(
       .addFields(
         { 
           name: 'Support Team', 
-          value: panel.supportRoleIds.map(id => `<@&${id}>`).join(', ') 
+          value: rolesMention || 'No support roles assigned'
         },
-        { name: 'Ticket Format', value: `${panel.prefix}-NUMBER` }
+        { 
+          name: 'Ticket Format', 
+          value: `${panel.prefix}-NUMBER` 
+        }
       )
       .setColor(0x0099ff);
 
@@ -239,10 +247,18 @@ export async function createTicketPanel(
           .setStyle(ButtonStyle.Primary)
       );
 
+    console.log('Sending panel to channel:', {
+      channelId,
+      embed: embed.toJSON(),
+      button: button.toJSON()
+    });
+
     await channel.send({
       embeds: [embed],
       components: [button],
     });
+
+    console.log('Successfully created ticket panel');
   } catch (error) {
     console.error('Error creating ticket panel:', error);
     throw error;
@@ -393,7 +409,7 @@ async function handleTicketCommand(interaction: ChatInputCommandInteraction) {
 
     const ticket = await storage.createTicket({
       serverId: server.id,
-      userId: null, // Will be updated when we implement user linking
+      userId: null, 
       title,
       status: "open",
     });

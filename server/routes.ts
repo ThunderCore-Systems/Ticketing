@@ -3,7 +3,13 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
 import { insertTicketSchema, insertMessageSchema, insertServerSchema } from "@shared/schema";
-import { setupDiscordBot, getServerChannels, getServerCategories, getServerRoles } from "./discord";
+import { 
+  setupDiscordBot, 
+  getServerChannels, 
+  getServerCategories, 
+  getServerRoles,
+  createTicketPanel
+} from "./discord";
 import { setupStripeWebhooks, createSubscription } from "./stripe";
 import session from "express-session";
 import passport from "passport";
@@ -283,9 +289,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Not authorized' });
       }
 
+      // Create panel in database first
       const panel = await storage.createPanel({
         ...req.body,
         serverId: server.id,
+      });
+
+      console.log('Creating Discord panel with data:', {
+        guildId: server.discordId,
+        channelId: panel.channelId,
+        panel: {
+          title: panel.title,
+          description: panel.description,
+          prefix: panel.prefix,
+          categoryId: panel.categoryId,
+          supportRoleIds: panel.supportRoleIds,
+        }
       });
 
       // Create and send Discord embed
@@ -304,7 +323,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(panel);
     } catch (error) {
       console.error('Error creating panel:', error);
-      res.status(500).json({ message: 'Failed to create panel' });
+      res.status(500).json({ 
+        message: 'Failed to create panel',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 

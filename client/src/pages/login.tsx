@@ -13,7 +13,7 @@ export default function Login() {
   useEffect(() => {
     // Show error toast if auth failed
     const params = new URLSearchParams(window.location.search);
-    if (params.get('error') === 'auth_failed') {
+    if (params.get("error") === "auth_failed") {
       toast({
         title: "Authentication Failed",
         description: "Failed to authenticate with Discord. Please try again.",
@@ -27,7 +27,7 @@ export default function Login() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl text-center">
-            Sign in to Discord Tickets
+            Sign in to Flaming Ticketing
           </CardTitle>
         </CardHeader>
         <CardContent>
