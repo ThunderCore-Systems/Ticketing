@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import {
   Table,
   TableBody,
@@ -65,7 +66,7 @@ export default function TicketList({ serverId }: TicketListProps) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>ID</TableHead>
+            <TableHead>Ticket</TableHead>
             <TableHead>Panel</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Created By</TableHead>
@@ -73,8 +74,12 @@ export default function TicketList({ serverId }: TicketListProps) {
         </TableHeader>
         <TableBody>
           {filteredTickets.map((ticket) => (
-            <TableRow key={ticket.id}>
-              <TableCell>{ticket.prefix}-{ticket.number}</TableCell>
+            <TableRow 
+              key={ticket.id}
+              className="cursor-pointer hover:bg-muted/50"
+              onClick={() => window.location.href = `/tickets/${ticket.id}`}
+            >
+              <TableCell>#{ticket.number}</TableCell>
               <TableCell>
                 {panels.find(p => p.id === ticket.panelId)?.title || 'Unknown Panel'}
               </TableCell>
