@@ -8,10 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
-import { MessageSquare } from "lucide-react";
-import { queryClient } from "@/lib/queryClient";
-import type { Ticket, Message, User } from "@shared/schema";
-import { apiRequest } from "@/lib/queryClient";
+import { MessageSquare, UserCircle2, Lock, UnlockKeyhole, Inbox } from "lucide-react";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import type { Ticket, Message, User, Panel } from "@shared/schema";
 
 interface TicketDetailProps {
   ticketId: number;
@@ -31,6 +30,11 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
 
   const { data: user } = useQuery<User>({
     queryKey: ["/api/auth/user"]
+  });
+
+  const { data: panel } = useQuery<Panel>({
+    queryKey: [`/api/panels/${ticket?.panelId}`],
+    enabled: !!ticket?.panelId,
   });
 
   const sendMessage = useMutation({
@@ -59,6 +63,38 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
     },
   });
 
+  const updateTicketStatus = useMutation({
+    mutationFn: async (status: string) => {
+      await apiRequest("PATCH", `/api/tickets/${ticketId}`, {
+        status,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/tickets/${ticketId}`]
+      });
+      toast({
+        title: "Ticket updated",
+        description: `Ticket has been ${ticket?.status === 'open' ? 'closed' : 'reopened'}.`,
+      });
+    },
+  });
+
+  const claimTicket = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", `/api/tickets/${ticketId}/claim`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: [`/api/tickets/${ticketId}`]
+      });
+      toast({
+        title: "Ticket claimed",
+        description: "You have claimed this ticket.",
+      });
+    },
+  });
+
   if (!ticket || !messages || !user) {
     return (
       <Card>
@@ -73,16 +109,51 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
 
   return (
     <Card className="h-[calc(100vh-12rem)]">
-      <CardHeader className="flex flex-row items-center justify-between">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0">
         <div>
-          <CardTitle className="text-xl">{ticket.title}</CardTitle>
+          <CardTitle className="text-xl">
+            {panel?.title} #{ticket.number}
+          </CardTitle>
           <p className="text-sm text-muted-foreground">
-            Created {format(new Date(ticket.createdAt), "PPp")}
+            Created {format(new Date(ticket.createdAt || Date.now()), "PPp")}
           </p>
         </div>
-        <Badge variant={ticket.status === "open" ? "default" : "secondary"}>
-          {ticket.status}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {ticket.claimedBy ? (
+            <Badge variant="outline" className="gap-1">
+              <UserCircle2 className="h-3 w-3" />
+              Claimed by {ticket.claimedBy === user.discordId ? 'you' : ticket.claimedBy}
+            </Badge>
+          ) : (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => claimTicket.mutate()}
+              className="gap-1"
+            >
+              <Inbox className="h-4 w-4" />
+              Claim Ticket
+            </Button>
+          )}
+          <Button
+            variant={ticket.status === "open" ? "destructive" : "default"}
+            size="sm"
+            onClick={() => updateTicketStatus.mutate(ticket.status === "open" ? "closed" : "open")}
+            className="gap-1"
+          >
+            {ticket.status === "open" ? (
+              <>
+                <Lock className="h-4 w-4" />
+                Close Ticket
+              </>
+            ) : (
+              <>
+                <UnlockKeyhole className="h-4 w-4" />
+                Reopen Ticket
+              </>
+            )}
+          </Button>
+        </div>
       </CardHeader>
 
       <CardContent className="flex flex-col h-full">
@@ -111,7 +182,7 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
                     <p>{message.content}</p>
                   </div>
                   <span className="text-xs text-muted-foreground mt-1">
-                    {format(new Date(message.createdAt), "p")}
+                    {format(new Date(message.createdAt || Date.now()), "p")}
                   </span>
                 </div>
               ))}

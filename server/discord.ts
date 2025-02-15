@@ -93,36 +93,35 @@ export async function setupDiscordBot(server: Server) {
 async function handleButtonInteraction(interaction: ButtonInteraction) {
   if (!interaction.customId.startsWith('ticket_')) return;
 
-  const [, action, panelIdStr] = interaction.customId.split('_');
-  const panelId = parseInt(panelIdStr);
+  const [, action, idStr] = interaction.customId.split('_');
+  const id = parseInt(idStr);
 
-  if (isNaN(panelId)) {
+  if (isNaN(id)) {
     await interaction.reply({
-      content: 'Invalid ticket panel configuration.',
+      content: 'Invalid configuration.',
       ephemeral: true
     });
     return;
   }
 
   try {
-    const panel = await storage.getPanel(panelId);
-    if (!panel) {
-      await interaction.reply({
-        content: 'This ticket panel no longer exists.',
-        ephemeral: true
-      });
-      return;
-    }
-
     switch (action) {
       case 'create':
+        const panel = await storage.getPanel(id);
+        if (!panel) {
+          await interaction.reply({
+            content: 'This ticket panel no longer exists.',
+            ephemeral: true
+          });
+          return;
+        }
         await createTicketChannel(interaction, panel);
         break;
       case 'close':
-        await closeTicket(interaction, panelIdStr);
+        await closeTicket(interaction, idStr);
         break;
       case 'claim':
-        await claimTicket(interaction, panelIdStr);
+        await claimTicket(interaction, idStr);
         break;
     }
   } catch (error) {
