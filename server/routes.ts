@@ -194,11 +194,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post('/api/servers/:serverId/tickets', requireAuth, async (req, res) => {
-    const ticket = await storage.createTicket({
-      ...insertTicketSchema.parse(req.body),
-      serverId: parseInt(req.params.serverId),
-    });
-    res.json(ticket);
+    try {
+      const ticket = await storage.createTicket({
+        ...insertTicketSchema.parse(req.body),
+        serverId: parseInt(req.params.serverId),
+        formResponses: req.body.formResponses ? JSON.stringify(req.body.formResponses) : null,
+      });
+
+      // Get the panel to include form responses in the initial message
+      const panel = await storage.getPanel(ticket.panelId);
+
+      if (panel && ticket.formResponses) {
+        const formattedResponses = Object.entries(JSON.parse(ticket.formResponses))
+          .map(([fieldId, value]) => {
+            const field = panel.formFields.find((f: any) => f.id === fieldId);
+            return field ? `**${field.label}**: ${value}` : null;
+          })
+          .filter(Boolean)
+          .join('\n');
+
+        if (formattedResponses) {
+          const messages = ticket.messages || [];
+          const initialMessage = {
+            id: messages.length + 1,
+            content: `**Ticket Information**\n${formattedResponses}`,
+            userId: (req.user as any).id,
+            username: 'System',
+            source: 'system',
+            createdAt: new Date().toISOString()
+          };
+
+          await storage.updateTicket(ticket.id, {
+            messages: [...messages, JSON.stringify(initialMessage)]
+          });
+        }
+      }
+
+      res.json(ticket);
+    } catch (error) {
+      console.error('Error creating ticket:', error);
+      res.status(500).json({ message: 'Failed to create ticket' });
+    }
   });
 
   app.get('/api/tickets/:ticketId/messages', requireAuth, async (req, res) => {
@@ -839,8 +875,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching roles:', error);
       res.status(500).json({ 
-        message: 'Failed to fetch roles',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        message: 'Failed to fetch roles',        error: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   });
@@ -1229,4 +1264,4 @@ export async function registerRoutes(app: Express): Promise<Server> {
   return httpServer;
 }
 
-let client: Client;
+let client: any;

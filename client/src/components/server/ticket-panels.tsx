@@ -19,6 +19,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,7 +33,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { PlusCircle, X, Edit, Trash2, RefreshCw } from "lucide-react";
+import { PlusCircle, X, Edit, Trash2, RefreshCw, GripVertical } from "lucide-react";
+
+interface FormField {
+  id: string;
+  label: string;
+  type: 'text' | 'textarea' | 'select';
+  required: boolean;
+  options?: string[];
+}
 
 interface TicketPanelsProps {
   serverId: number;
@@ -50,6 +60,14 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
   const [editingPanel, setEditingPanel] = useState<number | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [panelToDelete, setPanelToDelete] = useState<number | null>(null);
+
+  // New form-related state
+  const [formEnabled, setFormEnabled] = useState(false);
+  const [formFields, setFormFields] = useState<FormField[]>([]);
+  const [newFieldLabel, setNewFieldLabel] = useState("");
+  const [newFieldType, setNewFieldType] = useState<FormField['type']>("text");
+  const [newFieldRequired, setNewFieldRequired] = useState(true);
+  const [newFieldOptions, setNewFieldOptions] = useState("");
 
   // Fetch Discord server data
   const { data: channels } = useQuery({
@@ -81,6 +99,8 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
           supportRoleIds,
           prefix: prefix.toUpperCase(),
           transcriptChannelId,
+          formEnabled,
+          formFields,
         }
       );
       return res.json();
@@ -166,6 +186,8 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
         supportRoleIds,
         prefix: prefix.toUpperCase(),
         transcriptChannelId,
+        formEnabled,
+        formFields,
       });
       return res.json();
     },
@@ -196,6 +218,8 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
     setSupportRoleIds(panel.supportRoleIds);
     setPrefix(panel.prefix);
     setTranscriptChannelId(panel.transcriptChannelId || "");
+    setFormEnabled(panel.formEnabled || false);
+    setFormFields(panel.formFields || []);
     setEditingPanel(panel.id);
   };
 
@@ -223,6 +247,8 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
     setSupportRoleIds([]);
     setPrefix("");
     setTranscriptChannelId("");
+    setFormEnabled(false);
+    setFormFields([]);
     setEditingPanel(null);
   };
 
@@ -235,6 +261,8 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
       supportRoleIds,
       prefix: prefix.toUpperCase(),
       transcriptChannelId: transcriptChannelId || null,
+      formEnabled,
+      formFields,
     };
 
     if (editingPanel) {
@@ -242,6 +270,28 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
     } else {
       createPanel.mutate(panelData);
     }
+  };
+
+  const handleAddFormField = () => {
+    if (!newFieldLabel) return;
+
+    const newField: FormField = {
+      id: Date.now().toString(),
+      label: newFieldLabel,
+      type: newFieldType,
+      required: newFieldRequired,
+      options: newFieldType === 'select' ? newFieldOptions.split(',').map(opt => opt.trim()) : undefined
+    };
+
+    setFormFields([...formFields, newField]);
+    setNewFieldLabel("");
+    setNewFieldType("text");
+    setNewFieldRequired(true);
+    setNewFieldOptions("");
+  };
+
+  const handleRemoveFormField = (fieldId: string) => {
+    setFormFields(formFields.filter(field => field.id !== fieldId));
   };
 
   return (
@@ -399,6 +449,106 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
               })}
             </div>
           </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Enable Pre-ticket Form</Label>
+                <p className="text-sm text-muted-foreground">
+                  Require users to fill out a form before creating a ticket
+                </p>
+              </div>
+              <Switch
+                checked={formEnabled}
+                onCheckedChange={setFormEnabled}
+              />
+            </div>
+
+            {formEnabled && (
+              <div className="space-y-4 border rounded-lg p-4">
+                <h3 className="text-sm font-medium">Form Fields</h3>
+
+                <div className="space-y-4">
+                  {formFields.map((field, index) => (
+                    <div key={field.id} className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                      <GripVertical className="h-4 w-4 text-muted-foreground" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{field.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Type: {field.type} {field.required && '(Required)'}
+                        </p>
+                        {field.options && (
+                          <p className="text-xs text-muted-foreground">
+                            Options: {field.options.join(', ')}
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveFormField(field.id)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-4">
+                  <div className="grid gap-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <Input
+                        placeholder="Field label"
+                        value={newFieldLabel}
+                        onChange={(e) => setNewFieldLabel(e.target.value)}
+                      />
+                      <Select
+                        value={newFieldType}
+                        onValueChange={(value: FormField['type']) => setNewFieldType(value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Field type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="text">Text</SelectItem>
+                          <SelectItem value="textarea">Text Area</SelectItem>
+                          <SelectItem value="select">Select</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {newFieldType === 'select' && (
+                      <Input
+                        placeholder="Options (comma-separated)"
+                        value={newFieldOptions}
+                        onChange={(e) => setNewFieldOptions(e.target.value)}
+                      />
+                    )}
+
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={newFieldRequired}
+                          onCheckedChange={setNewFieldRequired}
+                        />
+                        <Label>Required</Label>
+                      </div>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleAddFormField}
+                        disabled={!newFieldLabel}
+                      >
+                        <PlusCircle className="h-4 w-4 mr-2" />
+                        Add Field
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </CardContent>
         <CardFooter className="flex gap-2">
           <Button
@@ -412,7 +562,8 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
               !prefix ||
               createPanel.isPending ||
               updatePanel.isPending ||
-              !transcriptChannelId
+              !transcriptChannelId ||
+              (formEnabled && formFields.length === 0)
             }
           >
             <PlusCircle className="mr-2 h-4 w-4" />
@@ -452,6 +603,12 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
                     </Badge>
                   ))}
                 </div>
+                {panel.formEnabled && (
+                  <div>
+                    <p>Form Enabled: Yes</p>
+                    <p>Form Fields: {JSON.stringify(panel.formFields)}</p> {/*Temporary Display for testing*/}
+                  </div>
+                )}
               </div>
             </CardContent>
             <CardFooter className="flex gap-2">
