@@ -757,60 +757,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/servers/:serverId/panel-groups', requireAuth, async (req, res) => {
-    try {
-      const server = await storage.getServer(parseInt(req.params.serverId));
-      if (!server) {
-        return res.status(404).json({ message: 'Server not found' });
-      }
-
-      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
-        return res.status(403).json({ message: 'Not authorized' });
-      }
-
-      const groups = await storage.getPanelGroupsByServerId(parseInt(req.params.serverId));
-      res.json(groups);
-    } catch (error) {
-      console.error('Error fetching panel groups:', error);
-      res.status(500).json({ message: 'Failed to fetch panel groups' });
-    }
-  });
-
-  app.post('/api/servers/:serverId/panel-groups', requireAuth, async (req, res) => {
-    try {
-      const server = await storage.getServer(parseInt(req.params.serverId));
-      if (!server) {
-        return res.status(404).json({ message: 'Server not found' });
-      }
-
-      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
-        return res.status(403).json({ message: 'Not authorized' });
-      }
-
-      // Get the current highest order number
-      const existingGroups = await storage.getPanelGroupsByServerId(parseInt(req.params.serverId));
-      const maxOrder = existingGroups.reduce((max, group) => Math.max(max, group.order), -1);
-
-      const group = await storage.createPanelGroup({
-        ...req.body,
-        serverId: parseInt(req.params.serverId),
-        order: maxOrder + 1
-      });
-
-      res.json(group);
-    } catch (error) {
-      console.error('Error creating panel group:', error);
-      res.status(500).json({ message: 'Failed to create panel group' });
-    }
-  });
-
-  app.patch('/api/servers/:serverId/panels/:panelId/order', requireAuth, async (req, res) => {
+  app.post('/api/servers/:serverId/activate', requireAuth, async (req, res) => {
     try {
       const serverId = parseInt(req.params.serverId);
-      const panelId = parseInt(req.params.panelId);
-      const { order, groupId } = req.body;
+      const userId = (req.user as any).id;
 
-      const server = await storage.getServer(serverId);
+      const user = await storage.getUser(userId);
+      if (!user || !user.serverTokens || user.serverTokens <= 0) {
+        return res.status(400).json({
+          error: "No server tokens available. Please purchase a subscription."
+        });
+      }
+
+      await storage.updateUser(userId, {
+        serverTokens: user.serverTokens - 1
+      });
+
+      const server = await storage.updateServer(serverId, {
+        subscriptionStatus: "active",
+        claimedByUserId: userId
+      });
+
+      res.json(server);
+    } catch (error) {
+      console.error('Server activation error:', error);
+      res.status(500).json({ error: "Failed to activate server" });
+    }
+  });
+
+  app.post('/api/servers/:serverId/validate-role', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
       if (!server) {
         return res.status(404).json({ message: 'Server not found' });
       }
@@ -819,16 +796,272 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Not authorized' });
       }
 
-      const panel = await storage.getPanel(panelId);
-      if (!panel) {
-        return res.status(404).json({ message: 'Panel not found' });
+      const roleSchema = z.object({
+        roleId: z.string().min(1, "Role ID is required")
+      });
+
+      const { roleId } = roleSchema.parse(req.body);
+      const role = await validateRoleId(server.discordId, roleId);
+
+      if (!role) {
+        return res.status(400).json({ message: 'Invalid role ID' });
       }
 
-      const updatedPanel = await storage.updatePanelOrder(panelId, order, groupId);
-      res.json(updatedPanel);
+      const updatedServer = await storage.updateServer(server.id, {
+        ticketManagerRoleId: roleId
+      });
+
+      res.json({ role, server: updatedServer });
     } catch (error) {
-      console.error('Error updating panel order:', error);
-      res.status(500).json({ message: 'Failed to update panel order' });
+      console.error('Error validating role:', error);
+      res.status(500).json({ 
+        message: 'Failed to validate role',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  app.get('/api/servers/:serverId/channels', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const channels = await getServerChannels(server.discordId);
+      res.json(channels);
+    } catch (error) {
+      console.error('Error fetching channels:', error);
+      res.status(500).json({ message: 'Failed to fetch channels' });
+    }
+  });
+
+  app.get('/api/servers/:serverId/categories', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const categories = await getServerCategories(server.discordId);
+      res.json(categories);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      res.status(500).json({ message: 'Failed to fetch categories' });
+    }
+  });
+
+  app.get('/api/servers/:serverId/roles', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const roles = await getServerRoles(server.discordId);
+      res.json(roles.filter(role => role.name !== '@everyone'));
+    } catch (error) {
+      console.error('Error fetching roles:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch roles',        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  app.patch('/api/servers/:serverId', requireAuth, async (req, res) => {
+    try {
+      const serverId = parseInt(req.params.serverId);
+      const server = await storage.getServer(serverId);
+
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const updatedServer = await storage.updateServer(serverId, req.body);
+      res.json(updatedServer);
+    } catch (error) {
+      console.error('Error updating server:', error);
+      res.status(500).json({
+        message: 'Failed to update server settings',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+  app.get('/api/servers/:serverId/support-stats', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const tickets = await storage.getTicketsByServerId(server.id);
+
+      const supportMembers = new Map();
+
+      tickets.forEach(ticket => {
+        if (ticket.claimedBy) {
+          if (!supportMembers.has(ticket.claimedBy)) {
+            supportMembers.set(ticket.claimedBy, {
+              id: ticket.claimedBy,
+              ticketsHandled: 0,
+              resolvedTickets: 0,
+              totalResponseTime: 0,
+              ticketsWithResponse: 0,
+              totalMessages: 0,
+              lastActive: null,
+              name: null,
+              avatar: null,
+              fastestResponse: Infinity,
+              slowestResponse: 0,
+              peakHours: Array(24).fill(0),
+              weekdayActivity: Array(7).fill(0),
+              categories: new Map(),
+              averageMessagesPerTicket: 0,
+              averageResolutionTime: 0,
+              messagesBySource: {
+                discord: 0,
+                dashboard: 0
+              }
+            });
+          }
+
+          const member = supportMembers.get(ticket.claimedBy);
+          member.ticketsHandled++;
+
+          if (ticket.status === "closed") {            member.resolvedTickets++;
+            if (ticket.closedAt && ticket.createdAt) {
+              const resolutionTime = new Date(ticket.closedAt).getTime() - new Date(ticket.createdAt).getTime();
+              member.averageResolutionTime = 
+                (member.averageResolutionTime * (member.resolvedTickets - 1) +resolutionTime) / member.resolvedTickets;
+            }
+          }
+
+          if (ticket.messages && Array.isArray(ticket.messages)) {
+            const messages = ticket.messages.map(msg => 
+              typeof msg === 'string' ? JSON.parse(msg) : msg
+            );
+
+            const staffMessages = messages.filter(m => m.userId === ticket.claimedBy);
+            member.totalMessages += staffMessages.length;
+
+            staffMessages.forEach(msg => {
+              member.messagesBySource[msg.source]++;
+
+              if (!member.name || !member.avatar) {
+                member.name = msg.username;
+                member.avatar = msg.avatarUrl || msg.avatar;
+              }
+            });
+
+            const userFirstMessage = messages[0];
+            const staffFirstResponse = messages.find(m => m.userId === ticket.claimedBy);
+
+            if (userFirstMessage && staffFirstResponse) {
+              const responseTime = new Date(staffFirstResponse.createdAt).getTime() - new Date(userFirstMessage.createdAt).getTime();
+              member.totalResponseTime += responseTime;
+              member.ticketsWithResponse++;
+
+              member.fastestResponse = Math.min(member.fastestResponse, responseTime);
+              member.slowestResponse = Math.max(member.slowestResponse, responseTime);
+            }
+
+            messages.forEach(msg => {
+              if (msg.userId === ticket.claimedBy) {
+                const msgDate = new Date(msg.createdAt);
+                member.peakHours[msgDate.getHours()]++;
+                member.weekdayActivity[msgDate.getDay()]++;
+
+                if (!member.lastActive || msgDate > new Date(member.lastActive)) {
+                  member.lastActive = msgDate;
+                }
+              }
+            });
+          }
+
+          if (!member.name) {
+            member.name = `Discord User ${member.id}`;
+          }
+
+          if (ticket.category) {
+            const currentCount = member.categories.get(ticket.category) || 0;
+            member.categories.set(ticket.category, currentCount + 1);
+          }
+        }
+      });
+
+      const stats = Array.from(supportMembers.values()).map(member => ({
+        id: member.id,
+        name: member.name || 'Unknown User',
+        avatar: member.avatar,
+        roleType: server.ticketManagerRoleId === member.id ? 'manager' : 'support',
+        ticketsHandled: member.ticketsHandled,
+        resolvedTickets: member.resolvedTickets,
+        avgResponseTime: member.ticketsWithResponse > 0 
+          ? Math.round(member.totalResponseTime / member.ticketsWithResponse / (1000 * 60)) 
+          : 0,
+        fastestResponse: member.fastestResponse === Infinity ? 0 : Math.round(member.fastestResponse / 1000), 
+        slowestResponse: Math.round(member.slowestResponse / 1000), 
+        resolutionRate: member.ticketsHandled > 0
+          ? Math.round((member.resolvedTickets / member.ticketsHandled) * 100)
+          : 0,
+        averageMessagesPerTicket: member.ticketsHandled > 0
+          ? Math.round(member.totalMessages / member.ticketsHandled)
+          : 0,
+        lastActive: member.lastActive,
+        peakHours: member.peakHours,
+        weekdayActivity: member.weekdayActivity,
+        categories: Array.from(member.categories.entries()).map(([category, count]) => ({
+          category,
+          count,
+          percentage: Math.round((count / member.ticketsHandled) * 100)
+        })),
+        averageResolutionTime: Math.round(member.averageResolutionTime / (1000 * 60)), 
+        messagesBySource: member.messagesBySource
+      }));
+
+      res.json(stats);
+    } catch (error) {
+      console.error('Error fetching support stats:', error);
+      res.status(500).json({ message: 'Failed to fetch support team statistics' });
+    }
+  });
+
+  app.get('/api/servers/:serverId/panels', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const panels = await storage.getPanelsByServerId(server.id);
+      res.json(panels);
+    } catch (error) {
+      console.error('Error fetching panels:', error);
+      res.status(500).json({ message: 'Failed to fetch panels' });
     }
   });
 
@@ -968,64 +1201,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/servers/:serverId/channels', requireAuth, async (req, res) => {
-    try {
-      const server = await storage.getServer(parseInt(req.params.serverId));
-      if (!server) {
-        return res.status(404).json({ message: 'Server not found' });
-      }
-
-      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
-        return res.status(403).json({ message: 'Not authorized' });
-      }
-
-      const channels = await getServerChannels(server.discordId);
-      res.json(channels);
-    } catch (error) {
-      console.error('Error fetching channels:', error);
-      res.status(500).json({ message: 'Failed to fetch channels' });
-    }
-  });
-
-  app.get('/api/servers/:serverId/categories', requireAuth, async (req, res) => {
-    try {
-      const server = await storage.getServer(parseInt(req.params.serverId));
-      if (!server) {
-        return res.status(404).json({ message: 'Server not found' });
-      }
-
-      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
-        return res.status(403).json({ message: 'Not authorized' });
-      }
-
-      const categories = await getServerCategories(server.discordId);
-      res.json(categories);
-    } catch (error) {
-      console.error('Error fetching categories:', error);
-      res.status(500).json({ message: 'Failed to fetch categories' });
-    }
-  });
-
-  app.get('/api/servers/:serverId/roles', requireAuth, async (req, res) => {
-    try {
-      const server = await storage.getServer(parseInt(req.params.serverId));
-      if (!server) {
-        return res.status(404).json({ message: 'Server not found' });
-      }
-
-      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
-        return res.status(403).json({ message: 'Not authorized' });
-      }
-
-      const roles = await getServerRoles(server.discordId);
-      res.json(roles.filter(role => role.name !== '@everyone'));
-    } catch (error) {
-      console.error('Error fetching roles:', error);
-      res.status(500).json({ message: 'Failed to fetch roles' });
-    }
-  });
-
   app.post('/api/stripe/webhook', setupStripeWebhooks());
+
+  app.post('/api/stripe/create-subscription', requireAuth, async (req, res) => {
+    try {
+      const { priceId, serverId } = req.body;
+
+      if (!priceId) {
+        return res.status(400).json({ error: "Price ID is required" });
+      }
+
+      console.log('Creating subscription:', { priceId, serverId });
+      const subscription = await createSubscription(priceId, serverId);
+
+      if (!subscription?.url) {
+        throw new Error("Invalid response from Stripe");
+      }
+
+      res.json(subscription);
+    } catch (error) {
+      console.error('Subscription creation error:', error);
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
 
   setupDiscordBot(httpServer).catch((error) => {
     console.error('Failed to initialize Discord bot:', error);

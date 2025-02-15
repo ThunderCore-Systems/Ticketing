@@ -35,7 +35,6 @@ export const servers = pgTable("servers", {
 export const panels = pgTable("panels", {
   id: serial("id").primaryKey(),
   serverId: integer("server_id").references(() => servers.id),
-  groupId: integer("group_id").references(() => panelGroups.id),
   title: text("title").notNull(),
   description: text("description").notNull(),
   channelId: text("channel_id").notNull(),
@@ -44,7 +43,6 @@ export const panels = pgTable("panels", {
   prefix: text("prefix").notNull(),
   transcriptChannelId: text("transcript_channel_id"),
   formEnabled: boolean("form_enabled").default(false),
-  order: integer("order").notNull().default(0),
   // Explicitly type formFields as a JSON array
   formFields: json("form_fields").$type<Array<{
     label: string;
@@ -52,15 +50,6 @@ export const panels = pgTable("panels", {
     required: boolean;
     options?: string[];
   }>>(),
-});
-
-export const panelGroups = pgTable("panel_groups", {
-  id: serial("id").primaryKey(),
-  serverId: integer("server_id").references(() => servers.id),
-  name: text("name").notNull(),
-  description: text("description"),
-  order: integer("order").notNull().default(0),
-  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const tickets = pgTable("tickets", {
@@ -139,19 +128,7 @@ export const panelRelations = relations(panels, ({ one, many }) => ({
     fields: [panels.serverId],
     references: [servers.id],
   }),
-  group: one(panelGroups, {
-    fields: [panels.groupId],
-    references: [panelGroups.id],
-  }),
   tickets: many(tickets),
-}));
-
-export const panelGroupRelations = relations(panelGroups, ({ one, many }) => ({
-  server: one(servers, {
-    fields: [panelGroups.serverId],
-    references: [servers.id],
-  }),
-  panels: many(panels),
 }));
 
 export const ticketRelations = relations(tickets, ({ one }) => ({
@@ -170,16 +147,13 @@ export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertServerSchema = createInsertSchema(servers).omit({ id: true });
 export const insertPanelSchema = createInsertSchema(panels).omit({ id: true });
 export const insertTicketSchema = createInsertSchema(tickets).omit({ id: true, createdAt: true, closedAt: true });
-export const insertPanelGroupSchema = createInsertSchema(panelGroups).omit({ id: true, createdAt: true });
 
 export type User = typeof users.$inferSelect;
 export type Server = typeof servers.$inferSelect;
 export type Panel = typeof panels.$inferSelect;
 export type Ticket = typeof tickets.$inferSelect;
-export type PanelGroup = typeof panelGroups.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertServer = z.infer<typeof insertServerSchema>;
 export type InsertPanel = z.infer<typeof insertPanelSchema>;
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
-export type InsertPanelGroup = z.infer<typeof insertPanelGroupSchema>;

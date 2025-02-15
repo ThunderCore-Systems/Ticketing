@@ -1,11 +1,10 @@
 import { 
-  users, servers, tickets, panels, panelGroups,
+  users, servers, tickets, panels,
   type User, type InsertUser, 
   type Server, type InsertServer,
   type Ticket, type InsertTicket,
   type Panel, type InsertPanel,
-  type Message, type TicketMessage,
-  type PanelGroup, type InsertPanelGroup
+  type Message, type TicketMessage
 } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
@@ -44,14 +43,6 @@ export interface IStorage {
   // Updated Tickets methods
   getTicketsByPrefix(prefix: string): Promise<Ticket[]>;
   getTicketsByPanelId(panelId: number): Promise<Ticket[]>;
-
-  // Panel Groups
-  getPanelGroup(id: number): Promise<PanelGroup | undefined>;
-  getPanelGroupsByServerId(serverId: number): Promise<PanelGroup[]>;
-  createPanelGroup(group: InsertPanelGroup): Promise<PanelGroup>;
-  updatePanelGroup(id: number, group: Partial<PanelGroup>): Promise<PanelGroup>;
-  deletePanelGroup(id: number): Promise<void>;
-  updatePanelOrder(panelId: number, order: number, groupId?: number | null): Promise<Panel>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -235,47 +226,6 @@ export class DatabaseStorage implements IStorage {
 
   async getTicketsByPanelId(panelId: number): Promise<Ticket[]> {
     return db.select().from(tickets).where(eq(tickets.panelId, panelId));
-  }
-
-  // Panel Groups
-  async getPanelGroup(id: number): Promise<PanelGroup | undefined> {
-    const [group] = await db.select().from(panelGroups).where(eq(panelGroups.id, id));
-    return group;
-  }
-
-  async getPanelGroupsByServerId(serverId: number): Promise<PanelGroup[]> {
-    return db
-      .select()
-      .from(panelGroups)
-      .where(eq(panelGroups.serverId, serverId))
-      .orderBy(panelGroups.order);
-  }
-
-  async createPanelGroup(insertGroup: InsertPanelGroup): Promise<PanelGroup> {
-    const [group] = await db.insert(panelGroups).values(insertGroup).returning();
-    return group;
-  }
-
-  async updatePanelGroup(id: number, updates: Partial<PanelGroup>): Promise<PanelGroup> {
-    const [group] = await db
-      .update(panelGroups)
-      .set(updates)
-      .where(eq(panelGroups.id, id))
-      .returning();
-    return group;
-  }
-
-  async deletePanelGroup(id: number): Promise<void> {
-    await db.delete(panelGroups).where(eq(panelGroups.id, id));
-  }
-
-  async updatePanelOrder(panelId: number, order: number, groupId?: number | null): Promise<Panel> {
-    const [panel] = await db
-      .update(panels)
-      .set({ order, groupId })
-      .where(eq(panels.id, panelId))
-      .returning();
-    return panel;
   }
 }
 
