@@ -111,7 +111,8 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         description: "Your message has been sent successfully.",
       });
     },
-    onError: () => {
+    onError: (err) => {
+      console.error("Error sending message:", err);
       toast({
         title: "Error",
         description: "Failed to send message. Please try again.",
@@ -136,6 +137,14 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         description: `Ticket has been ${ticket?.status === 'open' ? 'closed' : 'reopened'}.`,
       });
     },
+    onError: (err) => {
+      console.error("Error updating ticket status:", err);
+      toast({
+        title: "Error",
+        description: "Failed to update ticket status. Please try again.",
+        variant: "destructive",
+      });
+    }
   });
 
   const claimTicket = useMutation({
@@ -152,6 +161,14 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         description: ticket?.claimedBy ? "You have unclaimed this ticket." : "You have claimed this ticket.",
       });
     },
+    onError: (err) => {
+      console.error("Error claiming ticket:", err);
+      toast({
+        title: "Error",
+        description: "Failed to claim ticket. Please try again.",
+        variant: "destructive",
+      });
+    }
   });
 
   const saveTranscript = useMutation({
@@ -165,6 +182,14 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         description: "Ticket transcript has been saved and sent to the configured channel.",
       });
     },
+    onError: (err) => {
+      console.error("Error saving transcript:", err);
+      toast({
+        title: "Error",
+        description: "Failed to save transcript. Please try again.",
+        variant: "destructive",
+      });
+    }
   });
 
   const banUser = useMutation({
@@ -178,6 +203,14 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         description: "The user has been banned from creating new tickets.",
       });
     },
+    onError: (err) => {
+      console.error("Error banning user:", err);
+      toast({
+        title: "Error",
+        description: "Failed to ban user. Please try again.",
+        variant: "destructive",
+      });
+    }
   });
 
   const addUser = useMutation({
@@ -197,6 +230,14 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         description: "User has been added to the ticket.",
       });
     },
+    onError: (err) => {
+      console.error("Error adding user:", err);
+      toast({
+        title: "Error",
+        description: "Failed to add user. Please try again.",
+        variant: "destructive",
+      });
+    }
   });
 
   const removeUser = useMutation({
@@ -216,6 +257,14 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         description: "User has been removed from the ticket.",
       });
     },
+    onError: (err) => {
+      console.error("Error removing user:", err);
+      toast({
+        title: "Error",
+        description: "Failed to remove user. Please try again.",
+        variant: "destructive",
+      });
+    }
   });
 
   const upgradeTicket = useMutation({
@@ -235,6 +284,14 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         description: "Ticket has been upgraded to include the selected role.",
       });
     },
+    onError: (err) => {
+      console.error("Error upgrading ticket:", err);
+      toast({
+        title: "Error",
+        description: "Failed to upgrade ticket. Please try again.",
+        variant: "destructive",
+      });
+    }
   });
 
   // Get server roles
