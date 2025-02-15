@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useState } from "react";
@@ -40,8 +41,12 @@ interface ServerStatisticsProps {
   serverId: number;
 }
 
+type SortField = 'ticketsHandled' | 'resolutionRate' | 'avgResponseTime' | 'averageMessagesPerTicket';
+
 export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
   const [timeframe, setTimeframe] = useState("7d");
+  const [sortField, setSortField] = useState<SortField>('ticketsHandled');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Get tickets data
   const { data: tickets } = useQuery<Ticket[]>({
@@ -62,21 +67,56 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
   const avgResponseTime = calculateAverageResponseTime(tickets);
   const avgResolutionTime = calculateAverageResolutionTime(tickets);
 
+  // Sort support stats
+  const sortedStats = [...supportStats].sort((a, b) => {
+    const aValue = a[sortField];
+    const bValue = b[sortField];
+    return sortOrder === 'desc' ? bValue - aValue : aValue - bValue;
+  });
+
+  const handleExport = () => {
+    const data = sortedStats.map(member => ({
+      Name: member.name,
+      Role: member.roleType,
+      'Tickets Handled': member.ticketsHandled,
+      'Resolution Rate': `${member.resolutionRate}%`,
+      'Average Response Time': formatTime(member.avgResponseTime),
+      'Average Messages Per Ticket': member.averageMessagesPerTicket,
+      'Last Active': member.lastActive ? new Date(member.lastActive).toLocaleString() : 'Never',
+    }));
+
+    const csv = convertToCSV(data);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.setAttribute('hidden', '');
+    a.setAttribute('href', url);
+    a.setAttribute('download', 'support-team-stats.csv');
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-bold">Server Statistics</h2>
-        <Select value={timeframe} onValueChange={setTimeframe}>
-          <SelectTrigger className="w-[150px]">
-            <SelectValue placeholder="Select timeframe" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7d">Last 7 days</SelectItem>
-            <SelectItem value="30d">Last 30 days</SelectItem>
-            <SelectItem value="90d">Last 90 days</SelectItem>
-            <SelectItem value="all">All time</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-4">
+          <Select value={timeframe} onValueChange={setTimeframe}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="Select timeframe" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7d">Last 7 days</SelectItem>
+              <SelectItem value="30d">Last 30 days</SelectItem>
+              <SelectItem value="90d">Last 90 days</SelectItem>
+              <SelectItem value="all">All time</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button onClick={handleExport} variant="outline">
+            Export Stats
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -124,26 +164,46 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Support Team Performance</CardTitle>
-          <CardDescription>Individual support member statistics</CardDescription>
+          <div className="flex justify-between items-center">
+            <div>
+              <CardTitle>Support Team Performance</CardTitle>
+              <CardDescription>Individual support member statistics</CardDescription>
+            </div>
+            <Select value={sortField} onValueChange={(value) => setSortField(value as SortField)}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ticketsHandled">Tickets Handled</SelectItem>
+                <SelectItem value="resolutionRate">Resolution Rate</SelectItem>
+                <SelectItem value="avgResponseTime">Response Time</SelectItem>
+                <SelectItem value="averageMessagesPerTicket">Messages per Ticket</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            {supportStats.length === 0 ? (
+            {sortedStats.length === 0 ? (
               <p className="text-muted-foreground">No support team activity recorded yet.</p>
             ) : (
-              supportStats.map((member) => (
+              sortedStats.map((member, index) => (
                 <Dialog key={member.id}>
                   <DialogTrigger asChild>
                     <div className="space-y-2 hover:bg-muted p-4 rounded-lg cursor-pointer transition-colors">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <Avatar>
-                            <AvatarImage src={member.avatar || undefined} />
-                            <AvatarFallback>
-                              {member.name.split(' ').map(n => n[0]).join('')}
-                            </AvatarFallback>
-                          </Avatar>
+                          <div className="relative">
+                            <Avatar>
+                              <AvatarImage src={member.avatar} />
+                              <AvatarFallback>
+                                {member.name.split(' ').map(n => n[0]).join('')}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="absolute -top-2 -left-2 w-5 h-5 rounded-full bg-primary flex items-center justify-center text-xs text-primary-foreground">
+                              {index + 1}
+                            </div>
+                          </div>
                           <div>
                             <h4 className="font-medium flex items-center gap-2">
                               {member.name}
@@ -152,13 +212,15 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
                               </Badge>
                             </h4>
                             <p className="text-sm text-muted-foreground">
-                              Last active: {member.lastActive ? new Date(member.lastActive).toLocaleDateString() : 'Not yet active'}
+                              {member.lastActive 
+                                ? `Last active: ${new Date(member.lastActive).toLocaleString()}`
+                                : 'Never active'}
                             </p>
                           </div>
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div className="bg-muted rounded-lg p-3">
                           <div className="text-sm font-medium">Tickets Handled</div>
                           <div className="text-2xl">{member.ticketsHandled}</div>
@@ -173,6 +235,11 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
                           <div className="text-sm font-medium">Avg. Response</div>
                           <div className="text-2xl">{formatTime(member.avgResponseTime)}</div>
                         </div>
+
+                        <div className="bg-muted rounded-lg p-3">
+                          <div className="text-sm font-medium">Messages/Ticket</div>
+                          <div className="text-2xl">{member.averageMessagesPerTicket}</div>
+                        </div>
                       </div>
                     </div>
                   </DialogTrigger>
@@ -181,7 +248,7 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
                     <DialogHeader>
                       <DialogTitle className="flex items-center gap-2">
                         <Avatar>
-                          <AvatarImage src={member.avatar || undefined} />
+                          <AvatarImage src={member.avatar} />
                           <AvatarFallback>
                             {member.name.split(' ').map(n => n[0]).join('')}
                           </AvatarFallback>
@@ -191,7 +258,6 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
                     </DialogHeader>
 
                     <div className="space-y-6">
-                      {/* Detailed Statistics Grid */}
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                         <StatBox
                           label="Total Tickets"
@@ -219,7 +285,6 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
                         />
                       </div>
 
-                      {/* Activity Patterns */}
                       <Card>
                         <CardHeader>
                           <CardTitle className="text-lg">Daily Activity Pattern</CardTitle>
@@ -246,7 +311,6 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
                         </CardContent>
                       </Card>
 
-                      {/* Categories */}
                       {member.categories && member.categories.length > 0 && (
                         <Card>
                           <CardHeader>
@@ -308,22 +372,25 @@ function StatsCard({ title, value, description }: {
 
 function calculateAverageResponseTime(tickets: Ticket[]): number {
   const ticketsWithResponses = tickets.filter(ticket => {
-    const messages = ticket.messages ? ticket.messages.map(msg => 
+    if (!ticket.messages) return false;
+    const messages = ticket.messages.map(msg => 
       typeof msg === 'string' ? JSON.parse(msg) : msg
-    ) : [];
+    );
     return messages.length >= 2;
   });
 
   if (ticketsWithResponses.length === 0) return 0;
 
   const totalResponseTime = ticketsWithResponses.reduce((total, ticket) => {
-    const messages = ticket.messages ? ticket.messages.map(msg => 
+    const messages = ticket.messages!.map(msg => 
       typeof msg === 'string' ? JSON.parse(msg) : msg
-    ) : [];
-    if (messages.length < 2) return total;
+    );
 
     const firstMessage = messages[0];
-    const firstResponse = messages[1];
+    const firstResponse = messages.find(m => m.userId === ticket.claimedBy);
+
+    if (!firstMessage || !firstResponse) return total;
+
     return total + (new Date(firstResponse.createdAt).getTime() - new Date(firstMessage.createdAt).getTime());
   }, 0);
 
@@ -379,4 +446,10 @@ function getTicketActivityData(tickets: Ticket[], timeframe: string) {
   });
 
   return ticketCounts;
+}
+
+function convertToCSV(data: any[]) {
+  const headers = Object.keys(data[0]);
+  const rows = data.map(obj => headers.map(header => JSON.stringify(obj[header])).join(','));
+  return [headers.join(','), ...rows].join('\n');
 }

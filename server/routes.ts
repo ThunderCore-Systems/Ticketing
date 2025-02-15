@@ -462,7 +462,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update the support stats endpoint
+  // Replace the existing support stats endpoint
   app.get('/api/servers/:serverId/support-stats', requireAuth, async (req, res) => {
     try {
       const server = await storage.getServer(parseInt(req.params.serverId));
@@ -475,21 +475,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Not authorized' });
       }
 
-      // Get all tickets and panels for this server
+      // Get all tickets for this server
       const tickets = await storage.getTicketsByServerId(server.id);
-      const panels = await storage.getPanelsByServerId(server.id);
-
-      // Get Discord roles information
-      const roles = await getServerRoles(server.discordId);
-
-      // Collect all support role IDs
-      const supportRoleIds = new Set<string>();
-      if (server.ticketManagerRoleId) {
-        supportRoleIds.add(server.ticketManagerRoleId);
-      }
-      panels.forEach(panel => {
-        panel.supportRoleIds.forEach(roleId => supportRoleIds.add(roleId));
-      });
 
       // Create a map to track support member stats
       const supportMembers = new Map();
@@ -505,17 +492,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               resolvedTickets: 0,
               totalResponseTime: 0,
               ticketsWithResponse: 0,
-              averageMessagesPerTicket: 0,
               totalMessages: 0,
               lastActive: null,
               name: null,
               avatar: null,
               fastestResponse: Infinity,
               slowestResponse: 0,
-              peakHours: Array(24).fill(0), // Track activity by hour
-              weekdayActivity: Array(7).fill(0), // Track activity by day of week
-              categories: new Map(), // Track tickets by category
-              successRate: 0,
+              peakHours: Array(24).fill(0),
+              weekdayActivity: Array(7).fill(0),
+              categories: new Map(),
+              averageMessagesPerTicket: 0,
               averageResolutionTime: 0,
             });
           }
@@ -534,9 +520,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           // Process messages
           if (ticket.messages && Array.isArray(ticket.messages)) {
-            const messages = ticket.messages.map(msg => typeof msg === 'string' ? JSON.parse(msg) : msg);
+            const messages = ticket.messages.map(msg => 
+              typeof msg === 'string' ? JSON.parse(msg) : msg
+            );
 
-            member.totalMessages += messages.filter(m => m.userId === ticket.claimedBy).length;
+            // Count staff messages
+            const staffMessages = messages.filter(m => m.userId === ticket.claimedBy);
+            member.totalMessages += staffMessages.length;
 
             // Process first response time
             const userFirstMessage = messages[0];
@@ -544,7 +534,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             if (userFirstMessage && staffFirstResponse) {
               const responseTime = new Date(staffFirstResponse.createdAt).getTime() - new Date(userFirstMessage.createdAt).getTime();
-
               member.totalResponseTime += responseTime;
               member.ticketsWithResponse++;
 
@@ -559,21 +548,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 const msgDate = new Date(msg.createdAt);
                 member.peakHours[msgDate.getHours()]++;
                 member.weekdayActivity[msgDate.getDay()]++;
+
+                // Update last active time and user info
+                if (!member.lastActive || msgDate > new Date(member.lastActive)) {
+                  member.lastActive = msgDate;
+                  member.name = msg.username;
+                  member.avatar = msg.avatar;
+                }
               }
             });
-
-            // Update user info from latest message
-            const latestStaffMessage = [...messages].reverse()
-              .find(m => m.userId === ticket.claimedBy);
-            if (latestStaffMessage) {
-              member.name = latestStaffMessage.username;
-              member.avatar = latestStaffMessage.avatar;
-
-              const messageTime = new Date(latestStaffMessage.createdAt);
-              if (!member.lastActive || messageTime > member.lastActive) {
-                member.lastActive = messageTime;
-              }
-            }
           }
 
           // Track ticket categories
@@ -587,7 +570,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Calculate final stats for each member
       const stats = Array.from(supportMembers.values()).map(member => ({
         id: member.id,
-        name: member.name || 'Staff Member',
+        name: member.name || member.id,
         avatar: member.avatar,
         roleType: server.ticketManagerRoleId === member.id ? 'manager' : 'support',
         ticketsHandled: member.ticketsHandled,
