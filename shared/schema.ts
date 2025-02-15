@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean, json } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -42,6 +42,8 @@ export const panels = pgTable("panels", {
   supportRoleIds: text("support_role_ids").array().notNull(),
   prefix: text("prefix").notNull(),
   transcriptChannelId: text("transcript_channel_id"),
+  formEnabled: boolean("form_enabled").default(false),
+  formFields: json("form_fields").array(),
 });
 
 export const tickets = pgTable("tickets", {

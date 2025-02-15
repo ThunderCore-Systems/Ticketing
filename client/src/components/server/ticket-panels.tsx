@@ -218,6 +218,7 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
     setSupportRoleIds(panel.supportRoleIds);
     setPrefix(panel.prefix);
     setTranscriptChannelId(panel.transcriptChannelId || "");
+    // Properly set form state
     setFormEnabled(panel.formEnabled || false);
     setFormFields(panel.formFields || []);
     setEditingPanel(panel.id);

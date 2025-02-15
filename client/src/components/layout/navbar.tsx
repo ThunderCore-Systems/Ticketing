@@ -27,9 +27,14 @@ export default function Navbar() {
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center">
-            <Link href="/dashboard">
-              <a className="text-xl font-bold">Discord Tickets</a>
-            </Link>
+            <a 
+              href="https://discord.gg/5dZke6WKHu" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-xl font-bold hover:text-primary transition-colors"
+            >
+              Flaming Ticketing
+            </a>
             <div className="ml-10 flex items-center space-x-4">
               <Link href="/dashboard">
                 <Button

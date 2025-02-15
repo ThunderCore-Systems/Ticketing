@@ -187,11 +187,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updatePanel(id: number, updates: Partial<Panel>): Promise<Panel> {
+    console.log('Updating panel with data:', { id, updates });
     const [panel] = await db
       .update(panels)
-      .set(updates)
+      .set({
+        ...updates,
+        formEnabled: updates.formEnabled,
+        formFields: updates.formFields
+      })
       .where(eq(panels.id, id))
       .returning();
+    console.log('Updated panel result:', panel);
     return panel;
   }
 
