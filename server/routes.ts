@@ -16,6 +16,7 @@ import session from "express-session";
 import passport from "passport";
 import { Strategy as DiscordStrategy } from "passport-discord";
 import type { DiscordGuild, TicketMessage } from "./types";
+import { Client, TextChannel, EmbedBuilder } from 'discord.js'; //Import necessary Discord.js modules
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
@@ -270,6 +271,159 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error creating message:', error);
       res.status(500).json({ message: 'Failed to create message' });
+    }
+  });
+
+  app.get('/api/tickets/:ticketId', requireAuth, async (req, res) => {
+    try {
+      const ticket = await storage.getTicket(parseInt(req.params.ticketId));
+
+      if (!ticket) {
+        return res.status(404).json({ message: 'Ticket not found' });
+      }
+
+      // Get server to check permissions
+      const server = await storage.getServer(ticket.serverId);
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check if user has access to this server's tickets
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized to view this ticket' });
+      }
+
+      res.json(ticket);
+    } catch (error) {
+      console.error('Error fetching ticket:', error);
+      res.status(500).json({ message: 'Failed to fetch ticket details' });
+    }
+  });
+
+  // Add these new ticket management routes after the existing ticket routes
+  app.post('/api/tickets/:ticketId/remove-user', requireAuth, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const ticket = await storage.getTicket(ticketId);
+
+      if (!ticket) {
+        return res.status(404).json({ message: 'Ticket not found' });
+      }
+
+      const server = await storage.getServer(ticket.serverId);
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Verify user permission
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ message: 'User ID is required' });
+      }
+
+      // Remove user permissions in Discord
+      if (ticket.channelId) {
+        const channel = await client.channels.fetch(ticket.channelId);
+        if (channel instanceof TextChannel) {
+          await channel.permissionOverwrites.delete(userId);
+        }
+      }
+
+      // Send webhook message about user removal
+      if (ticket.channelId) {
+        const embed = new EmbedBuilder()
+          .setTitle('User Removed')
+          .setDescription(`<@${userId}> has been removed from the ticket`)
+          .setColor(0xFF0000)
+          .setTimestamp();
+
+        await sendWebhookMessage(
+          ticket.channelId,
+          '',
+          (req.user as any).username,
+          server.anonymousMode || false,
+          server.webhookAvatar,
+          (req.user as any).avatarUrl,
+          [embed]
+        );
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error removing user:', error);
+      res.status(500).json({ message: 'Failed to remove user' });
+    }
+  });
+
+  app.post('/api/tickets/:ticketId/upgrade', requireAuth, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const ticket = await storage.getTicket(ticketId);
+
+      if (!ticket) {
+        return res.status(404).json({ message: 'Ticket not found' });
+      }
+
+      const server = await storage.getServer(ticket.serverId);
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Verify user permission
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const { roleId } = req.body;
+      if (!roleId) {
+        return res.status(400).json({ message: 'Role ID is required' });
+      }
+
+      // Validate role
+      const role = await validateRoleId(server.discordId, roleId);
+      if (!role) {
+        return res.status(400).json({ message: 'Invalid role ID' });
+      }
+
+      // Update channel permissions
+      if (ticket.channelId) {
+        const channel = await client.channels.fetch(ticket.channelId);
+        if (channel instanceof TextChannel) {
+          await channel.permissionOverwrites.edit(roleId, {
+            ViewChannel: true,
+            SendMessages: true,
+            ReadMessageHistory: true,
+          });
+        }
+      }
+
+      // Send webhook message about ticket upgrade
+      if (ticket.channelId) {
+        const embed = new EmbedBuilder()
+          .setTitle('Ticket Upgraded')
+          .setDescription(`This ticket has been upgraded to include the role <@&${roleId}>`)
+          .setColor(0x00FF00)
+          .setTimestamp();
+
+        await sendWebhookMessage(
+          ticket.channelId,
+          '',
+          (req.user as any).username,
+          server.anonymousMode || false,
+          server.webhookAvatar,
+          (req.user as any).avatarUrl,
+          [embed]
+        );
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error upgrading ticket:', error);
+      res.status(500).json({ message: 'Failed to upgrade ticket' });
     }
   });
 
@@ -604,7 +758,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
             member.name = `Discord User ${member.id}`;
           }
 
-
           // Track ticket categories
           if (ticket.category) {
             const currentCount = member.categories.get(ticket.category) || 0;
@@ -874,3 +1027,4 @@ async function validateRoleId(guildId: string, roleId: string): Promise<any | nu
   //Implementation to validate roleId against Discord API goes here.  Return the role object if valid, null otherwise.
   return null; // Replace with actual validation logic
 }
+let client: Client; //Declare client variable

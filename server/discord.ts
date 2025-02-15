@@ -60,7 +60,20 @@ const commands = [
         required: true,
       }
     ],
-  }
+  },
+  {
+    name: 'remove',
+    type: ApplicationCommandType.ChatInput,
+    description: 'Remove a user from the current ticket',
+    options: [
+      {
+        name: 'user',
+        type: ApplicationCommandOptionType.User,
+        description: 'The user to remove from the ticket',
+        required: true,
+      }
+    ],
+  },
 ];
 
 export async function setupDiscordBot(server: Server) {
@@ -104,6 +117,8 @@ export async function setupDiscordBot(server: Server) {
           await handleUpgradeCommand(interaction);
         } else if (interaction.commandName === 'add') {
           await handleAddUserCommand(interaction);
+        } else if (interaction.commandName === 'remove') {
+          await handleRemoveUserCommand(interaction);
         }
       }
     });
@@ -822,28 +837,10 @@ function formatDuration(start?: Date | null, end?: Date | null): string {
   return `${minutes}m`;
 }
 
-// Add a new function for validating role IDs
-export async function validateRoleId(guildId: string, roleId: string) {
-  if (!client) throw new Error('Discord bot is not initialized');
-
-  try {
-    const guild = await client.guilds.fetch(guildId);
-    const role = await guild.roles.fetch(roleId);
-
-    if (!role) {
-      return null;
-    }
-
-    return {
-      id: role.id,
-      name: role.name,
-      color: role.color,
-      position: role.position
-    };
-  } catch (error) {
-    console.error('Error validating role:', error);
-    return null;
-  }
+// Add this helper function
+export async function getTicketByChannelId(channelId: string) {
+  const tickets = await storage.getAllTickets();
+  return tickets.find(t => t.channelId === channelId);
 }
 
 async function handleUpgradeCommand(interaction: ChatInputCommandInteraction) {
@@ -927,8 +924,58 @@ async function handleAddUserCommand(interaction: ChatInputCommandInteraction) {
   await interaction.reply({ embeds: [embed] });
 }
 
-// Add this helper function
-export async function getTicketByChannelId(channelId: string) {
-  const tickets = await storage.getAllTickets();
-  return tickets.find(t => t.channelId === channelId);
+// Add a new function for validating role IDs
+export async function validateRoleId(guildId: string, roleId: string) {
+  if (!client) throw new Error('Discord bot is not initialized');
+
+  try {
+    const guild = await client.guilds.fetch(guildId);
+    const role = await guild.roles.fetch(roleId);
+
+    if (!role) {
+      return null;
+    }
+
+    return {
+      id: role.id,
+      name: role.name,
+      color: role.color,
+      position: role.position
+    };
+  } catch (error) {
+    console.error('Error validating role:', error);
+    return null;
+  }
+}
+
+async function handleRemoveUserCommand(interaction: ChatInputCommandInteraction) {
+  if (!interaction.channel || !(interaction.channel instanceof TextChannel)) {
+    await interaction.reply({
+      content: 'This command can only be used in ticket channels.',
+      ephemeral: true
+    });
+    return;
+  }
+
+  const ticket = await storage.getTicketByChannelId(interaction.channel.id);
+  if (!ticket) {
+    await interaction.reply({
+      content: 'This command can only be used in ticket channels.',
+      ephemeral: true
+    });
+    return;
+  }
+
+  const user = interaction.options.getUser('user', true);
+
+  // Remove channel permissions
+  await interaction.channel.permissionOverwrites.delete(user);
+
+  const embed = new EmbedBuilder()
+    .setTitle('User Removed')
+    .setDescription(`${user} has been removed from the ticket`)
+    .setColor(0xFF0000)
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [embed] });
 }

@@ -3,12 +3,12 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { 
-  Card, 
-  CardContent, 
-  CardHeader, 
-  CardTitle, 
-  CardDescription 
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -23,11 +23,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
-import { 
-  MessageSquare, 
-  UserCircle2, 
-  Lock, 
-  UnlockKeyhole, 
+import {
+  MessageSquare,
+  UserCircle2,
+  Lock,
+  UnlockKeyhole,
   Inbox,
   Users,
   AlertCircle,
@@ -54,6 +54,10 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
   const [newMessage, setNewMessage] = useState("");
   const [newUserId, setNewUserId] = useState("");
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [isUpgradeOpen, setIsUpgradeOpen] = useState(false);
+  const [selectedRole, setSelectedRole] = useState("");
+  const [isRemoveUserOpen, setIsRemoveUserOpen] = useState(false);
+  const [userToRemove, setUserToRemove] = useState("");
   const { toast } = useToast();
 
   // Get ticket details
@@ -195,6 +199,50 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
     },
   });
 
+  const removeUser = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await apiRequest("POST", `/api/tickets/${ticketId}/remove-user`, {
+        userId,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      setIsRemoveUserOpen(false);
+      queryClient.invalidateQueries({
+        queryKey: [`/api/tickets/${ticketId}`]
+      });
+      toast({
+        title: "User removed",
+        description: "User has been removed from the ticket.",
+      });
+    },
+  });
+
+  const upgradeTicket = useMutation({
+    mutationFn: async (roleId: string) => {
+      const res = await apiRequest("POST", `/api/tickets/${ticketId}/upgrade`, {
+        roleId,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      setIsUpgradeOpen(false);
+      queryClient.invalidateQueries({
+        queryKey: [`/api/tickets/${ticketId}`]
+      });
+      toast({
+        title: "Ticket upgraded",
+        description: "Ticket has been upgraded to include the selected role.",
+      });
+    },
+  });
+
+  // Get server roles
+  const { data: roles } = useQuery<{ id: string, name: string }[]>({
+    queryKey: [`/api/servers/${ticket?.serverId}/roles`],
+    enabled: !!ticket?.serverId,
+  });
+
   const isLoading = ticketLoading || messagesLoading || userLoading || panelLoading;
 
   if (isLoading) {
@@ -236,8 +284,8 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
           <div className="flex items-center gap-2">
             {ticket.claimedBy ? (
               ticket.claimedBy === user.discordId ? (
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   onClick={() => claimTicket.mutate()}
                   className="gap-1"
@@ -252,8 +300,8 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
                 </Badge>
               )
             ) : (
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => claimTicket.mutate()}
                 className="gap-1"
@@ -289,6 +337,22 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
               <Download className="h-4 w-4" />
               Save Transcript
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  More Actions
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onSelect={() => setIsUpgradeOpen(true)}>
+                  Upgrade Ticket
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setIsRemoveUserOpen(true)}>
+                  Remove User
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1">
@@ -313,6 +377,62 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
                   </div>
                   <Button onClick={() => addUser.mutate(newUserId)}>
                     Add User
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={isRemoveUserOpen} onOpenChange={setIsRemoveUserOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Remove User from Ticket</DialogTitle>
+                  <DialogDescription>
+                    Enter the Discord ID of the user you want to remove from this ticket.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Input
+                      placeholder="Discord User ID"
+                      value={userToRemove}
+                      onChange={(e) => setUserToRemove(e.target.value)}
+                    />
+                  </div>
+                  <Button onClick={() => removeUser.mutate(userToRemove)}>
+                    Remove User
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={isUpgradeOpen} onOpenChange={setIsUpgradeOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Upgrade Ticket</DialogTitle>
+                  <DialogDescription>
+                    Select a role to upgrade this ticket to.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <select
+                      className="w-full p-2 border rounded"
+                      value={selectedRole}
+                      onChange={(e) => setSelectedRole(e.target.value)}
+                    >
+                      <option value="">Select a role...</option>
+                      {roles?.map(role => (
+                        <option key={role.id} value={role.id}>
+                          {role.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <Button
+                    onClick={() => upgradeTicket.mutate(selectedRole)}
+                    disabled={!selectedRole}
+                  >
+                    Upgrade Ticket
                   </Button>
                 </div>
               </DialogContent>
@@ -399,8 +519,8 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
                       <h4 className="text-sm font-medium mb-2">Discord Profile</h4>
                       <div className="flex items-center gap-3">
                         {ticketCreator.avatarUrl && (
-                          <img 
-                            src={ticketCreator.avatarUrl} 
+                          <img
+                            src={ticketCreator.avatarUrl}
                             alt={ticketCreator.username}
                             className="w-10 h-10 rounded-full"
                           />
@@ -413,8 +533,8 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
                     </div>
 
                     <div className="flex gap-2">
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         size="sm"
                         onClick={() => banUser.mutate()}
                         className="gap-1"
