@@ -1079,41 +1079,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const panel = await storage.createPanel({
         ...req.body,
         serverId: server.id,
-      });
-
-      console.log('Creating Discord panel with data:', {
-        guildId: server.discordId,
-        channelId: panel.channelId,
-        panel: {
-          id: panel.id,
-          title: panel.title,
-          description: panel.description,
-          prefix: panel.prefix,
-          categoryId: panel.categoryId,
-          supportRoleIds: panel.supportRoleIds,
-        }
+        formEnabled: req.body.formEnabled,
+        formFields: req.body.formFields
       });
 
       await createTicketPanel(
         server.discordId,
-        panel.channelId,
+        req.body.channelId,
         {
-          id: panel.id,
-          title: panel.title,
-          description: panel.description,
-          prefix: panel.prefix,
-          categoryId: panel.categoryId,
-          supportRoleIds: panel.supportRoleIds,
+          ...panel,
+          serverId: server.id
         }
       );
 
       res.json(panel);
     } catch (error) {
       console.error('Error creating panel:', error);
-      res.status(500).json({ 
-        message: 'Failed to create panel',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
+      res.status(500).json({ message: 'Failed to create panel' });
     }
   });
 
@@ -1128,31 +1110,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Not authorized' });
       }
 
-      const panel = await storage.updatePanel(parseInt(req.params.panelId), req.body);
-
-      if (req.query.resend === 'true') {
-        await createTicketPanel(
-          server.discordId,
-          panel.channelId,
-          {
-            id: panel.id,
-            title: panel.title,
-            description: panel.description,
-            prefix: panel.prefix,
-            categoryId: panel.categoryId,
-            supportRoleIds: panel.supportRoleIds,
-            serverId: panel.serverId
-          }
-        );
+      const panelId = parseInt(req.params.panelId);
+      const panel = await storage.getPanel(panelId);
+      if (!panel) {
+        return res.status(404).json({ message: 'Panel not found' });
       }
 
-      res.json(panel);
+      const updatedPanel = await storage.updatePanel(panelId, {
+        ...req.body,
+        formEnabled: req.body.formEnabled,
+        formFields: req.body.formFields
+      });
+
+      // Update Discord panel
+      await createTicketPanel(
+        server.discordId,
+        panel.channelId,
+        {
+          ...updatedPanel,
+          serverId: server.id
+        }
+      );
+
+      res.json(updatedPanel);
     } catch (error) {
       console.error('Error updating panel:', error);
-      res.status(500).json({ 
-        message: 'Failed to update panel',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
+      res.status(500).json({ message: 'Failed to update panel' });
     }
   });
 

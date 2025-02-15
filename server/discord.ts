@@ -349,6 +349,8 @@ export async function createTicketPanel(
     categoryId: string;
     supportRoleIds: string[];
     serverId: number;
+    formEnabled?: boolean;
+    formFields?: any[];
   }
 ) {
   if (!client) throw new Error('Discord bot is not initialized');
@@ -376,8 +378,19 @@ export async function createTicketPanel(
           name: 'Ticket Format',
           value: `${panel.prefix}-NUMBER`
         }
-      )
-      .setColor(0x0099ff);
+      );
+
+    // Add form fields information if enabled
+    if (panel.formEnabled && panel.formFields && panel.formFields.length > 0) {
+      embed.addFields({
+        name: 'Required Information',
+        value: panel.formFields
+          .map(field => `• ${field.label}${field.required ? ' (Required)' : ''}`)
+          .join('\n')
+      });
+    }
+
+    embed.setColor(0x0099ff);
 
     const button = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
@@ -390,7 +403,9 @@ export async function createTicketPanel(
     console.log('Sending panel to channel:', {
       channelId,
       embed: embed.toJSON(),
-      button: button.toJSON()
+      button: button.toJSON(),
+      formEnabled: panel.formEnabled,
+      formFieldsCount: panel.formFields?.length
     });
 
     await channel.send({
