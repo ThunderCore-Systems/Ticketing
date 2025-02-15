@@ -968,29 +968,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/stripe/webhook', setupStripeWebhooks());
-
-  app.post('/api/stripe/create-subscription', requireAuth, async (req, res) => {
+  app.get('/api/servers/:serverId/channels', requireAuth, async (req, res) => {
     try {
-      const { priceId, serverId } = req.body;
-
-      if (!priceId) {
-        return res.status(400).json({ error: "Price ID is required" });
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
       }
 
-      console.log('Creating subscription:', { priceId, serverId });
-      const subscription = await createSubscription(priceId, serverId);
-
-      if (!subscription?.url) {
-        throw new Error("Invalid response from Stripe");
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
       }
 
-      res.json(subscription);
+      const channels = await getServerChannels(server.discordId);
+      res.json(channels);
     } catch (error) {
-      console.error('Subscription creation error:', error);
-      res.status(400).json({ error: (error as Error).message });
+      console.error('Error fetching channels:', error);
+      res.status(500).json({ message: 'Failed to fetch channels' });
     }
   });
+
+  app.get('/api/servers/:serverId/categories', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const categories = await getServerCategories(server.discordId);
+      res.json(categories);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+      res.status(500).json({ message: 'Failed to fetch categories' });
+    }
+  });
+
+  app.get('/api/servers/:serverId/roles', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const roles = await getServerRoles(server.discordId);
+      res.json(roles.filter(role => role.name !== '@everyone'));
+    } catch (error) {
+      console.error('Error fetching roles:', error);
+      res.status(500).json({ message: 'Failed to fetch roles' });
+    }
+  });
+
+  app.post('/api/stripe/webhook', setupStripeWebhooks());
 
   setupDiscordBot(httpServer).catch((error) => {
     console.error('Failed to initialize Discord bot:', error);
