@@ -43,7 +43,13 @@ export const panels = pgTable("panels", {
   prefix: text("prefix").notNull(),
   transcriptChannelId: text("transcript_channel_id"),
   formEnabled: boolean("form_enabled").default(false),
-  formFields: json("form_fields").array(),
+  // Explicitly type formFields as a JSON array
+  formFields: json("form_fields").$type<Array<{
+    label: string;
+    type: 'text' | 'textarea' | 'select';
+    required: boolean;
+    options?: string[];
+  }>>(),
 });
 
 export const tickets = pgTable("tickets", {

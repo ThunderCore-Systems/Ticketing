@@ -188,15 +188,19 @@ export class DatabaseStorage implements IStorage {
 
   async updatePanel(id: number, updates: Partial<Panel>): Promise<Panel> {
     console.log('Updating panel with data:', { id, updates });
+
+    // Ensure formFields is properly serialized if it exists
+    const updatesWithSerializedFields = {
+      ...updates,
+      formFields: updates.formFields ? JSON.stringify(updates.formFields) : undefined
+    };
+
     const [panel] = await db
       .update(panels)
-      .set({
-        ...updates,
-        formEnabled: updates.formEnabled,
-        formFields: updates.formFields
-      })
+      .set(updatesWithSerializedFields)
       .where(eq(panels.id, id))
       .returning();
+
     console.log('Updated panel result:', panel);
     return panel;
   }
