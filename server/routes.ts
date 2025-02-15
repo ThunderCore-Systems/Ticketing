@@ -391,6 +391,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add the support stats endpoint before the Stripe webhook endpoint
+  app.get('/api/servers/:serverId/support-stats', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check access
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      // Get all tickets for this server
+      const tickets = await storage.getTicketsByServerId(server.id);
+
+      // Get unique support team members who have claimed tickets
+      const supportMembers = new Map();
+      tickets.forEach(ticket => {
+        if (ticket.claimedBy) {
+          if (!supportMembers.has(ticket.claimedBy)) {
+            supportMembers.set(ticket.claimedBy, {
+              id: ticket.claimedBy,
+              name: ticket.claimedBy,
+              ticketsHandled: 0,
+              resolvedTickets: 0,
+              totalResponseTime: 0,
+              ticketsWithResponse: 0,
+            });
+          }
+
+          const member = supportMembers.get(ticket.claimedBy);
+          member.ticketsHandled++;
+
+          if (ticket.status === "closed") {
+            member.resolvedTickets++;
+          }
+
+          // Calculate response time if messages are available
+          const messages = ticket.messages || [];
+          if (messages.length > 1) {
+            const firstMessage = new Date(messages[0].createdAt);
+            const firstResponse = new Date(messages[1].createdAt);
+            member.totalResponseTime += firstResponse.getTime() - firstMessage.getTime();
+            member.ticketsWithResponse++;
+          }
+        }
+      });
+
+      // Calculate final stats for each member
+      const stats = Array.from(supportMembers.values()).map(member => ({
+        id: member.id,
+        name: member.name,
+        ticketsHandled: member.ticketsHandled,
+        avgResponseTime: member.ticketsWithResponse > 0 
+          ? Math.round(member.totalResponseTime / member.ticketsWithResponse / (1000 * 60))
+          : 0,
+        resolutionRate: member.ticketsHandled > 0
+          ? Math.round((member.resolvedTickets / member.ticketsHandled) * 100)
+          : 0,
+      }));
+
+      res.json(stats);
+    } catch (error) {
+      console.error('Error fetching support stats:', error);
+      res.status(500).json({ 
+        message: 'Failed to fetch support team statistics',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Add the panels endpoint after the roles endpoint
   app.get('/api/servers/:serverId/panels', requireAuth, async (req, res) => {
     try {

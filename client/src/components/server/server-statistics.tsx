@@ -104,7 +104,7 @@ export default function ServerStatistics({ serverId }: ServerStatisticsProps) {
                 <XAxis dataKey="date" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="tickets" fill="#3b82f6" />
+                <Bar dataKey="tickets" fill="hsl(var(--primary))" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -162,16 +162,43 @@ function StatsCard({ title, value, description }: {
 }
 
 function calculateAverageResponseTime(tickets: Ticket[]): number {
-  // Implement calculation logic
-  return 0;
+  const ticketsWithResponses = tickets.filter(ticket => {
+    const messages = ticket.messages || [];
+    return messages.length > 1; // At least one response after initial ticket creation
+  });
+
+  if (ticketsWithResponses.length === 0) return 0;
+
+  const totalResponseTime = ticketsWithResponses.reduce((total, ticket) => {
+    const messages = ticket.messages || [];
+    if (messages.length < 2) return total;
+
+    const firstMessage = new Date(messages[0].createdAt);
+    const firstResponse = new Date(messages[1].createdAt);
+    return total + (firstResponse.getTime() - firstMessage.getTime());
+  }, 0);
+
+  return Math.round(totalResponseTime / ticketsWithResponses.length / (1000 * 60)); // Convert to minutes
 }
 
 function calculateAverageResolutionTime(tickets: Ticket[]): number {
-  // Implement calculation logic
-  return 0;
+  const resolvedTickets = tickets.filter(ticket => 
+    ticket.status === "closed" && ticket.closedAt
+  );
+
+  if (resolvedTickets.length === 0) return 0;
+
+  const totalResolutionTime = resolvedTickets.reduce((total, ticket) => {
+    const createdAt = new Date(ticket.createdAt);
+    const closedAt = new Date(ticket.closedAt!);
+    return total + (closedAt.getTime() - createdAt.getTime());
+  }, 0);
+
+  return Math.round(totalResolutionTime / resolvedTickets.length / (1000 * 60)); // Convert to minutes
 }
 
 function formatTime(minutes: number): string {
+  if (minutes === 0) return "N/A";
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
@@ -180,6 +207,27 @@ function formatTime(minutes: number): string {
 }
 
 function getTicketActivityData(tickets: Ticket[], timeframe: string) {
-  // Implement data transformation logic
-  return [];
+  const days = timeframe === "7d" ? 7 : timeframe === "30d" ? 30 : timeframe === "90d" ? 90 : 365;
+  const now = new Date();
+  const startDate = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+
+  // Create an array of dates
+  const dates = Array.from({ length: days }, (_, i) => {
+    const date = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
+    return date.toLocaleDateString();
+  });
+
+  // Count tickets per date
+  const ticketCounts = dates.map(date => {
+    const count = tickets.filter(ticket => 
+      new Date(ticket.createdAt).toLocaleDateString() === date
+    ).length;
+
+    return {
+      date,
+      tickets: count
+    };
+  });
+
+  return ticketCounts;
 }
