@@ -31,19 +31,24 @@ interface ServerSettingsProps {
 export default function ServerSettings({ server }: ServerSettingsProps) {
   const { toast } = useToast();
 
-  // Fetch Discord roles for this server
+  // Get Discord roles for this server
   const { data: roles } = useQuery({
     queryKey: [`/api/servers/${server.discordId}/roles`],
   });
 
   const updateSettings = useMutation({
     mutationFn: async (updates: Partial<Server>) => {
-      const res = await apiRequest("PATCH", `/api/servers/${server.id}`, updates);
-      if (!res.ok) {
-        const error = await res.json();
+      try {
+        const res = await apiRequest("PATCH", `/api/servers/${server.id}`, updates);
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || 'Failed to update settings');
+        }
+        return data;
+      } catch (error: any) {
+        console.error('Settings update error:', error);
         throw new Error(error.message || 'Failed to update settings');
       }
-      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -54,7 +59,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
         description: "Server settings have been updated successfully.",
       });
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast({
         title: "Error",
         description: error.message || "Failed to update server settings. Please try again.",
@@ -80,11 +85,11 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
     try {
       // Convert to base64
       const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64 = event.target?.result as string;
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const base64 = reader.result as string;
         updateSettings.mutate({ webhookAvatar: base64 });
       };
-      reader.readAsDataURL(file);
     } catch (error) {
       toast({
         title: "Error",
@@ -118,6 +123,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               onCheckedChange={(checked) =>
                 updateSettings.mutate({ anonymousMode: checked })
               }
+              disabled={updateSettings.isPending}
             />
           </div>
 
@@ -147,14 +153,14 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
                 Upload Avatar
               </Button>
               <p className="text-sm text-muted-foreground">
-                Custom avatar for anonymous support messages. Your Discord avatar will be used in non-anonymous mode.
+                Custom avatar for anonymous support messages
               </p>
             </div>
           </div>
 
           <div className="space-y-2">
             <Label>
-              Ticket Manager Roles
+              Ticket Manager Role
             </Label>
             <Select
               value={server.ticketManagerRoleId || ""}
@@ -163,10 +169,10 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               }
             >
               <SelectTrigger>
-                <SelectValue placeholder="Select roles that can manage tickets" />
+                <SelectValue placeholder="Select role that can manage tickets" />
               </SelectTrigger>
               <SelectContent>
-                {roles?.map((role) => (
+                {roles?.map((role: any) => (
                   <SelectItem key={role.id} value={role.id}>
                     {role.name}
                   </SelectItem>
@@ -174,7 +180,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               </SelectContent>
             </Select>
             <p className="text-sm text-muted-foreground">
-              Members with these roles can view all tickets and manage users
+              Members with this role can view all tickets and manage users
             </p>
           </div>
 
