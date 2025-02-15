@@ -34,19 +34,24 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
   const [newMessage, setNewMessage] = useState("");
   const { toast } = useToast();
 
-  const { data: ticket } = useQuery<Ticket>({
-    queryKey: [`/api/tickets/${ticketId}`]
+  // Get ticket details
+  const { data: ticket, isLoading: ticketLoading } = useQuery<Ticket>({
+    queryKey: [`/api/tickets/${ticketId}`],
   });
 
-  const { data: messages } = useQuery<Message[]>({
-    queryKey: [`/api/tickets/${ticketId}/messages`]
+  // Get ticket messages
+  const { data: messages, isLoading: messagesLoading } = useQuery<Message[]>({
+    queryKey: [`/api/tickets/${ticketId}/messages`],
+    enabled: !!ticket,
   });
 
-  const { data: user } = useQuery<User>({
-    queryKey: ["/api/auth/user"]
+  // Get current user
+  const { data: user, isLoading: userLoading } = useQuery<User>({
+    queryKey: ["/api/auth/user"],
   });
 
-  const { data: panel } = useQuery<Panel>({
+  // Get panel details
+  const { data: panel, isLoading: panelLoading } = useQuery<Panel>({
     queryKey: [`/api/panels/${ticket?.panelId}`],
     enabled: !!ticket?.panelId,
   });
@@ -109,12 +114,16 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
     },
   });
 
-  if (!ticket || !messages || !user || !panel) {
+  const isLoading = ticketLoading || messagesLoading || userLoading || panelLoading;
+
+  if (isLoading || !ticket || !messages || !user || !panel) {
     return (
       <Card>
         <CardContent className="p-6">
           <div className="flex items-center justify-center h-48">
-            <p className="text-muted-foreground">Loading ticket details...</p>
+            <p className="text-muted-foreground">
+              {isLoading ? "Loading ticket details..." : "Could not load ticket details"}
+            </p>
           </div>
         </CardContent>
       </Card>
