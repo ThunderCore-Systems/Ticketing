@@ -5,6 +5,7 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
+  CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -140,7 +141,12 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
                 Automatically archive tickets after they've been closed for 7 days
               </p>
             </div>
-            <Switch />
+            <Switch
+              checked={server.autoArchive || false}
+              onCheckedChange={(checked) =>
+                updateSettings.mutate({ autoArchive: checked })
+              }
+            />
           </div>
 
           <div className="flex items-center justify-between">
@@ -152,7 +158,12 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
                 Log all ticket-related actions (claims, closures, user management) for audit purposes
               </p>
             </div>
-            <Switch />
+            <Switch
+              checked={server.activityLogs || false}
+              onCheckedChange={(checked) =>
+                updateSettings.mutate({ activityLogs: checked })
+              }
+            />
           </div>
 
           <div className="flex items-center justify-between">
@@ -164,7 +175,12 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
                 Track overall server performance metrics
               </p>
             </div>
-            <Switch />
+            <Switch
+              checked={server.enableStats || false}
+              onCheckedChange={(checked) =>
+                updateSettings.mutate({ enableStats: checked })
+              }
+            />
           </div>
 
           <div className="flex items-center justify-between">
@@ -176,7 +192,12 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
                 Track and display individual support team member performance metrics
               </p>
             </div>
-            <Switch />
+            <Switch
+              checked={server.enableTeamStats || false}
+              onCheckedChange={(checked) =>
+                updateSettings.mutate({ enableTeamStats: checked })
+              }
+            />
           </div>
         </CardContent>
         <CardFooter>

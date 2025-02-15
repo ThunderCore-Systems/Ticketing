@@ -26,6 +26,10 @@ export const servers = pgTable("servers", {
   anonymousMode: boolean("anonymous_mode").default(false),
   webhookAvatar: text("webhook_avatar"),
   ticketManagerRoleId: text("ticket_manager_role_id"),
+  autoArchive: boolean("auto_archive").default(false),
+  activityLogs: boolean("activity_logs").default(false),
+  enableStats: boolean("enable_stats").default(false),
+  enableTeamStats: boolean("enable_team_stats").default(false),
 });
 
 export const panels = pgTable("panels", {
