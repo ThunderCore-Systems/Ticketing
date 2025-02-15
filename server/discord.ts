@@ -486,3 +486,41 @@ export async function closeTicketChannel(channelId: string) {
     console.error('Error closing ticket channel:', error);
   }
 }
+
+// Add this function near the end of the file
+export async function sendWebhookMessage(
+  channelId: string,
+  content: string,
+  username: string,
+  anonymousMode: boolean = false
+) {
+  if (!client) {
+    console.error('Discord bot is not initialized');
+    return;
+  }
+
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (!channel || !(channel instanceof TextChannel)) {
+      throw new Error(`Invalid channel: ${channelId}`);
+    }
+
+    const webhooks = await channel.fetchWebhooks();
+    let webhook = webhooks.find(wh => wh.name === 'Ticket System');
+
+    if (!webhook) {
+      webhook = await channel.createWebhook({
+        name: 'Ticket System',
+        avatar: 'https://i.imgur.com/AfFp7pu.png', // Replace with your bot's avatar
+      });
+    }
+
+    await webhook.send({
+      content,
+      username: anonymousMode ? 'Support Team' : `${username} (Support Team)`,
+    });
+  } catch (error) {
+    console.error('Error sending webhook message:', error);
+    throw error;
+  }
+}

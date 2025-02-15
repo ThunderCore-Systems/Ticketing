@@ -8,7 +8,8 @@ import {
   getServerChannels, 
   getServerCategories, 
   getServerRoles,
-  createTicketPanel
+  createTicketPanel,
+  sendWebhookMessage
 } from "./discord";
 import { setupStripeWebhooks, createSubscription } from "./stripe";
 import session from "express-session";
@@ -176,11 +177,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.post('/api/tickets/:ticketId/messages', requireAuth, async (req, res) => {
-    const message = await storage.createMessage({
-      ...insertMessageSchema.parse(req.body),
-      ticketId: parseInt(req.params.ticketId),
-    });
-    res.json(message);
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const ticket = await storage.getTicket(ticketId);
+
+      if (!ticket) {
+        return res.status(404).json({ message: 'Ticket not found' });
+      }
+
+      const server = await storage.getServer(ticket.serverId);
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      const message = await storage.createMessage({
+        ...insertMessageSchema.parse(req.body),
+        ticketId: ticketId,
+      });
+
+      // Send webhook message if the user is support staff
+      if (server.ownerId === (req.user as any).id || server.claimedByUserId === (req.user as any).id) {
+        await sendWebhookMessage(
+          ticket.channelId!,
+          message.content,
+          (req.user as any).username,
+          server.anonymousMode
+        );
+      }
+
+      res.json(message);
+    } catch (error) {
+      console.error('Error creating message:', error);
+      res.status(500).json({ message: 'Failed to create message' });
+    }
   });
 
   // Add these routes after the existing ticket routes

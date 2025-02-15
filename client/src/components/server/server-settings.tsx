@@ -57,22 +57,27 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <label className="text-sm font-medium">
+                Anonymous Support Mode
+              </label>
+              <p className="text-sm text-muted-foreground">
+                When enabled, support team messages will appear as "Support Team" instead of individual usernames
+              </p>
+            </div>
+            <Switch 
+              checked={server.anonymousMode || false}
+              onCheckedChange={(checked) => 
+                updateSettings.mutate({ anonymousMode: checked })
+              }
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <label className="text-sm font-medium">
                 Automatic Ticket Archiving
               </label>
               <p className="text-sm text-muted-foreground">
                 Automatically archive tickets after they've been closed for 7 days
-              </p>
-            </div>
-            <Switch />
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <label className="text-sm font-medium">
-                Ticket Creation Notifications
-              </label>
-              <p className="text-sm text-muted-foreground">
-                Send notifications when new tickets are created
               </p>
             </div>
             <Switch />
@@ -94,6 +99,10 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
             </label>
             <Input
               placeholder="Enter Discord role ID for support team"
+              value={server.supportRoleId || ""}
+              onChange={(e) => 
+                updateSettings.mutate({ supportRoleId: e.target.value })
+              }
             />
             <p className="text-sm text-muted-foreground">
               Members with this role will have access to all tickets
