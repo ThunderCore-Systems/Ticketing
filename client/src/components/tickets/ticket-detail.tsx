@@ -37,31 +37,36 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
   // Get ticket details
   const { data: ticket, isLoading: ticketLoading } = useQuery<Ticket>({
     queryKey: [`/api/tickets/${ticketId}`],
+    retry: 2,
+  });
+
+  // Get current user
+  const { data: user, isLoading: userLoading } = useQuery<User>({
+    queryKey: ["/api/auth/user"],
+    retry: 2,
   });
 
   // Get ticket messages
   const { data: messages, isLoading: messagesLoading } = useQuery<Message[]>({
     queryKey: [`/api/tickets/${ticketId}/messages`],
     enabled: !!ticket,
-  });
-
-  // Get current user
-  const { data: user, isLoading: userLoading } = useQuery<User>({
-    queryKey: ["/api/auth/user"],
+    retry: 2,
   });
 
   // Get panel details
   const { data: panel, isLoading: panelLoading } = useQuery<Panel>({
     queryKey: [`/api/panels/${ticket?.panelId}`],
     enabled: !!ticket?.panelId,
+    retry: 2,
   });
 
   const sendMessage = useMutation({
     mutationFn: async (content: string) => {
-      await apiRequest("POST", `/api/tickets/${ticketId}/messages`, {
+      const res = await apiRequest("POST", `/api/tickets/${ticketId}/messages`, {
         content,
         userId: user?.id,
       });
+      return res.json();
     },
     onSuccess: () => {
       setNewMessage("");
@@ -84,9 +89,10 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
 
   const updateTicketStatus = useMutation({
     mutationFn: async (status: string) => {
-      await apiRequest("PATCH", `/api/tickets/${ticketId}`, {
+      const res = await apiRequest("PATCH", `/api/tickets/${ticketId}`, {
         status,
       });
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -101,7 +107,8 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
 
   const claimTicket = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", `/api/tickets/${ticketId}/claim`);
+      const res = await apiRequest("POST", `/api/tickets/${ticketId}/claim`);
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -116,14 +123,24 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
 
   const isLoading = ticketLoading || messagesLoading || userLoading || panelLoading;
 
-  if (isLoading || !ticket || !messages || !user || !panel) {
+  if (isLoading) {
     return (
       <Card>
         <CardContent className="p-6">
           <div className="flex items-center justify-center h-48">
-            <p className="text-muted-foreground">
-              {isLoading ? "Loading ticket details..." : "Could not load ticket details"}
-            </p>
+            <p className="text-muted-foreground">Loading ticket details...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!ticket || !user) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex items-center justify-center h-48">
+            <p className="text-muted-foreground">Could not find ticket #{ticketId}</p>
           </div>
         </CardContent>
       </Card>
@@ -136,7 +153,7 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div>
             <CardTitle className="text-xl">
-              {panel.title} #{ticket.number}
+              {panel?.title} #{ticket.number}
             </CardTitle>
             <CardDescription>
               Created {format(new Date(ticket.createdAt || Date.now()), "PPp")}
@@ -194,7 +211,7 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
           </CardHeader>
           <CardContent className="flex flex-col h-full">
             <ScrollArea className="flex-1 pr-4 -mr-4">
-              {messages.length === 0 ? (
+              {!messages || messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                   <MessageSquare className="h-8 w-8 mb-2" />
                   <p>No messages yet</p>
@@ -272,16 +289,18 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
                     </div>
                   </div>
                 )}
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Support Team</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {panel.supportRoleIds.map(roleId => (
-                      <Badge key={roleId} variant="secondary">
-                        @{roleId}
-                      </Badge>
-                    ))}
+                {panel && (
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Support Team</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {panel.supportRoleIds.map(roleId => (
+                        <Badge key={roleId} variant="secondary">
+                          @{roleId}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -295,10 +314,12 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Panel</h4>
-                  <p>{panel.title}</p>
-                </div>
+                {panel && (
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Panel</h4>
+                    <p>{panel.title}</p>
+                  </div>
+                )}
                 <div>
                   <h4 className="text-sm font-medium mb-2">Ticket Number</h4>
                   <p>#{ticket.number}</p>
