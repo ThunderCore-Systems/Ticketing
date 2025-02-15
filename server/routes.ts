@@ -183,6 +183,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(message);
   });
 
+  // Add these routes after the existing ticket routes
+  app.get('/api/tickets/:ticketId', requireAuth, async (req, res) => {
+    try {
+      const ticket = await storage.getTicket(parseInt(req.params.ticketId));
+
+      if (!ticket) {
+        return res.status(404).json({ message: 'Ticket not found' });
+      }
+
+      // Get server to check permissions
+      const server = await storage.getServer(ticket.serverId);
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check if user has access to this server's tickets
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized to view this ticket' });
+      }
+
+      res.json(ticket);
+    } catch (error) {
+      console.error('Error fetching ticket:', error);
+      res.status(500).json({ message: 'Failed to fetch ticket details' });
+    }
+  });
+
+  app.get('/api/panels/:panelId', requireAuth, async (req, res) => {
+    try {
+      const panel = await storage.getPanel(parseInt(req.params.panelId));
+
+      if (!panel) {
+        return res.status(404).json({ message: 'Panel not found' });
+      }
+
+      // Get server to check permissions
+      const server = await storage.getServer(panel.serverId);
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check if user has access to this server's panels
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized to view this panel' });
+      }
+
+      res.json(panel);
+    } catch (error) {
+      console.error('Error fetching panel:', error);
+      res.status(500).json({ message: 'Failed to fetch panel details' });
+    }
+  });
+
   //Add new endpoint for activating servers with tokens
   app.post('/api/servers/:serverId/activate', requireAuth, async (req, res) => {
     try {
