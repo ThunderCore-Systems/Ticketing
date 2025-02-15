@@ -39,6 +39,7 @@ export interface IStorage {
   getPanelsByServerId(serverId: number): Promise<Panel[]>;
   createPanel(panel: InsertPanel): Promise<Panel>;
   updatePanel(id: number, panel: Partial<Panel>): Promise<Panel>;
+  deletePanel(id: number): Promise<void>;
 
   // Updated Tickets methods
   getTicketsByPrefix(prefix: string): Promise<Ticket[]>;
@@ -161,6 +162,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(panels.id, id))
       .returning();
     return panel;
+  }
+
+  async deletePanel(id: number): Promise<void> {
+    await db.delete(panels).where(eq(panels.id, id));
   }
 
   // Updated Tickets methods

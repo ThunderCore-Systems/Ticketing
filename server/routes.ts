@@ -353,6 +353,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add new endpoints for panel management
+  app.patch('/api/servers/:serverId/panels/:panelId', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check access
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const panel = await storage.updatePanel(parseInt(req.params.panelId), req.body);
+
+      // Recreate panel in Discord if requested
+      if (req.query.resend === 'true') {
+        await createTicketPanel(
+          server.discordId,
+          panel.channelId,
+          {
+            id: panel.id,
+            title: panel.title,
+            description: panel.description,
+            prefix: panel.prefix,
+            categoryId: panel.categoryId,
+            supportRoleIds: panel.supportRoleIds,
+            serverId: panel.serverId
+          }
+        );
+      }
+
+      res.json(panel);
+    } catch (error) {
+      console.error('Error updating panel:', error);
+      res.status(500).json({ 
+        message: 'Failed to update panel',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  app.delete('/api/servers/:serverId/panels/:panelId', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check access
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      await storage.deletePanel(parseInt(req.params.panelId));
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting panel:', error);
+      res.status(500).json({ 
+        message: 'Failed to delete panel',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  app.post('/api/servers/:serverId/panels/:panelId/resend', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check access
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const panel = await storage.getPanel(parseInt(req.params.panelId));
+      if (!panel) {
+        return res.status(404).json({ message: 'Panel not found' });
+      }
+
+      await createTicketPanel(
+        server.discordId,
+        panel.channelId,
+        {
+          id: panel.id,
+          title: panel.title,
+          description: panel.description,
+          prefix: panel.prefix,
+          categoryId: panel.categoryId,
+          supportRoleIds: panel.supportRoleIds,
+          serverId: panel.serverId
+        }
+      );
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error resending panel:', error);
+      res.status(500).json({ 
+        message: 'Failed to resend panel',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Stripe webhook - no auth required
   app.post('/api/stripe/webhook', setupStripeWebhooks());
 

@@ -19,9 +19,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { PlusCircle, X } from "lucide-react";
+import { PlusCircle, X, Edit, Trash2, RefreshCw } from "lucide-react";
 
 interface TicketPanelsProps {
   serverId: number;
@@ -36,6 +46,9 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
   const [selectedRoleId, setSelectedRoleId] = useState("");
   const [supportRoleIds, setSupportRoleIds] = useState<string[]>([]);
   const [prefix, setPrefix] = useState("");
+  const [editingPanel, setEditingPanel] = useState<number | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [panelToDelete, setPanelToDelete] = useState<number | null>(null);
 
   // Fetch Discord server data
   const { data: channels } = useQuery({
@@ -54,6 +67,93 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
     queryKey: [`/api/servers/${serverId}/panels`],
   });
 
+  const updatePanel = useMutation({
+    mutationFn: async (panelId: number) => {
+      const res = await apiRequest(
+        "PATCH", 
+        `/api/servers/${serverId}/panels/${panelId}`,
+        {
+          title,
+          description,
+          channelId,
+          categoryId,
+          supportRoleIds,
+          prefix: prefix.toUpperCase(),
+        }
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      setEditingPanel(null);
+      resetForm();
+      queryClient.invalidateQueries({
+        queryKey: [`/api/servers/${serverId}/panels`],
+      });
+      toast({
+        title: "Panel Updated",
+        description: "Ticket panel has been updated successfully.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update ticket panel. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deletePanel = useMutation({
+    mutationFn: async (panelId: number) => {
+      const res = await apiRequest(
+        "DELETE",
+        `/api/servers/${serverId}/panels/${panelId}`
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      setDeleteConfirmOpen(false);
+      setPanelToDelete(null);
+      queryClient.invalidateQueries({
+        queryKey: [`/api/servers/${serverId}/panels`],
+      });
+      toast({
+        title: "Panel Deleted",
+        description: "Ticket panel has been deleted successfully.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete ticket panel. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const resendPanel = useMutation({
+    mutationFn: async (panelId: number) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/servers/${serverId}/panels/${panelId}/resend`
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Panel Resent",
+        description: "Ticket panel has been resent to Discord.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to resend ticket panel. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const createPanel = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/servers/${serverId}/panels`, {
@@ -61,18 +161,13 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
         description,
         channelId,
         categoryId,
-        supportRoleIds, // Now sending array of role IDs
+        supportRoleIds,
         prefix: prefix.toUpperCase(),
       });
       return res.json();
     },
     onSuccess: () => {
-      setTitle("");
-      setDescription("");
-      setChannelId("");
-      setCategoryId("");
-      setSupportRoleIds([]);
-      setPrefix("");
+      resetForm();
       queryClient.invalidateQueries({
         queryKey: [`/api/servers/${serverId}/panels`],
       });
@@ -90,6 +185,21 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
     },
   });
 
+  const handleEditClick = (panel: any) => {
+    setTitle(panel.title);
+    setDescription(panel.description);
+    setChannelId(panel.channelId);
+    setCategoryId(panel.categoryId);
+    setSupportRoleIds(panel.supportRoleIds);
+    setPrefix(panel.prefix);
+    setEditingPanel(panel.id);
+  };
+
+  const handleDeleteClick = (panelId: number) => {
+    setPanelToDelete(panelId);
+    setDeleteConfirmOpen(true);
+  };
+
   const handleAddRole = () => {
     if (selectedRoleId && !supportRoleIds.includes(selectedRoleId)) {
       setSupportRoleIds([...supportRoleIds, selectedRoleId]);
@@ -101,16 +211,37 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
     setSupportRoleIds(supportRoleIds.filter(id => id !== roleId));
   };
 
+  const resetForm = () => {
+    setTitle("");
+    setDescription("");
+    setChannelId("");
+    setCategoryId("");
+    setSupportRoleIds([]);
+    setPrefix("");
+    setEditingPanel(null);
+  };
+
+  const handleSubmit = () => {
+    if (editingPanel) {
+      updatePanel.mutate(editingPanel);
+    } else {
+      createPanel.mutate();
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Create Ticket Panel</CardTitle>
+          <CardTitle>{editingPanel ? "Edit Ticket Panel" : "Create Ticket Panel"}</CardTitle>
           <CardDescription>
-            Create a new ticket panel that will be displayed in your Discord server
+            {editingPanel 
+              ? "Edit an existing ticket panel"
+              : "Create a new ticket panel that will be displayed in your Discord server"}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Existing form fields */}
           <div className="space-y-2">
             <label htmlFor="title" className="text-sm font-medium">
               Panel Title
@@ -231,9 +362,9 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
             </div>
           </div>
         </CardContent>
-        <CardFooter>
+        <CardFooter className="flex gap-2">
           <Button
-            onClick={() => createPanel.mutate()}
+            onClick={handleSubmit}
             disabled={
               !title || 
               !description || 
@@ -241,12 +372,21 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
               !categoryId || 
               supportRoleIds.length === 0 || 
               !prefix || 
-              createPanel.isPending
+              createPanel.isPending || 
+              updatePanel.isPending
             }
           >
             <PlusCircle className="mr-2 h-4 w-4" />
-            Create Panel
+            {editingPanel ? "Update Panel" : "Create Panel"}
           </Button>
+          {editingPanel && (
+            <Button
+              variant="outline"
+              onClick={resetForm}
+            >
+              Cancel
+            </Button>
+          )}
         </CardFooter>
       </Card>
 
@@ -272,9 +412,56 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
                 </div>
               </div>
             </CardContent>
+            <CardFooter className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleEditClick(panel)}
+              >
+                <Edit className="h-4 w-4 mr-1" />
+                Edit
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => resendPanel.mutate(panel.id)}
+                disabled={resendPanel.isPending}
+              >
+                <RefreshCw className="h-4 w-4 mr-1" />
+                Resend
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleDeleteClick(panel.id)}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Delete
+              </Button>
+            </CardFooter>
           </Card>
         ))}
       </div>
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the ticket panel
+              and remove it from your Discord server.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => panelToDelete && deletePanel.mutate(panelToDelete)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

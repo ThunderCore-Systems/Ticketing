@@ -219,7 +219,7 @@ export async function createTicketPanel(
     prefix: string;
     categoryId: string;
     supportRoleIds: string[];
-    serverId: number; // Added serverId
+    serverId: number; 
   }
 ) {
   if (!client) throw new Error('Discord bot is not initialized');
