@@ -246,6 +246,24 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               disabled={updateSettings.isPending}
             />
           </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>
+                Restrict Claimed Ticket Messages
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                When enabled, only the staff member who claimed a ticket can send messages in it
+              </p>
+            </div>
+            <Switch
+              checked={server.restrictClaimedMessages || false}
+              onCheckedChange={(checked) =>
+                updateSettings.mutate({ restrictClaimedMessages: checked })
+              }
+              disabled={updateSettings.isPending}
+            />
+          </div>
         </CardContent>
       </Card>
     </div>
