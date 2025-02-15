@@ -5,7 +5,6 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardFooter,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -143,30 +142,41 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
             </div>
             <Switch />
           </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Advanced Settings</CardTitle>
-          <CardDescription>
-            Configure advanced server settings
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>
-              Support Team Role ID
-            </Label>
-            <Input
-              placeholder="Enter Discord role ID for support team"
-              value={server.supportRoleId || ""}
-              onChange={(e) =>
-                updateSettings.mutate({ supportRoleId: e.target.value })
-              }
-            />
-            <p className="text-sm text-muted-foreground">
-              Members with this role will have access to all tickets
-            </p>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>
+                Ticket Activity Logs
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Log all ticket-related actions (claims, closures, user management) for audit purposes
+              </p>
+            </div>
+            <Switch />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>
+                Server Statistics
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Track overall server performance metrics
+              </p>
+            </div>
+            <Switch />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>
+                Support Team Statistics
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Track and display individual support team member performance metrics
+              </p>
+            </div>
+            <Switch />
           </div>
         </CardContent>
         <CardFooter>

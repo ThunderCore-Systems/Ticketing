@@ -62,6 +62,27 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Custom types for statistics
+export type SupportTeamMember = {
+  id: string;
+  name: string;
+  ticketsHandled: number;
+  avgResponseTime: number;
+  resolutionRate: number;
+  lastActive: Date;
+};
+
+export type ServerStats = {
+  totalTickets: number;
+  openTickets: number;
+  closedTickets: number;
+  avgResponseTime: number;
+  avgResolutionTime: number;
+  peakHours: { hour: number; count: number }[];
+  ticketsByDay: { date: string; count: number }[];
+  topCategories: { category: string; count: number }[];
+};
+
 export const userRelations = relations(users, ({ many }) => ({
   servers: many(servers),
   messages: many(messages),

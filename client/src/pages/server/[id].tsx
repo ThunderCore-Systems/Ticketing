@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import TicketList from "@/components/tickets/ticket-list";
 import TicketPanels from "@/components/server/ticket-panels";
 import ServerSettings from "@/components/server/server-settings";
+import ServerStatistics from "@/components/server/server-statistics";
 import type { Server } from "@shared/schema";
 
 export default function ServerDashboard() {
@@ -50,9 +51,10 @@ export default function ServerDashboard() {
         <TabsList>
           <TabsTrigger value="tickets">Tickets</TabsTrigger>
           <TabsTrigger value="panels">Ticket Panels</TabsTrigger>
+          <TabsTrigger value="statistics">Statistics</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="tickets" className="space-y-4">
           <Card>
             <CardHeader>
@@ -69,6 +71,10 @@ export default function ServerDashboard() {
 
         <TabsContent value="panels">
           <TicketPanels serverId={serverId} />
+        </TabsContent>
+
+        <TabsContent value="statistics">
+          <ServerStatistics serverId={serverId} />
         </TabsContent>
 
         <TabsContent value="settings">
