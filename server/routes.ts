@@ -276,6 +276,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Add the panels endpoint after the roles endpoint
+  app.get('/api/servers/:serverId/panels', requireAuth, async (req, res) => {
+    try {
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Check access
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      const panels = await storage.getPanelsByServerId(server.id);
+      res.json(panels);
+    } catch (error) {
+      console.error('Error fetching panels:', error);
+      res.status(500).json({ message: 'Failed to fetch panels' });
+    }
+  });
+
   // Panel creation endpoint
   app.post('/api/servers/:serverId/panels', requireAuth, async (req, res) => {
     try {
@@ -299,6 +320,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         guildId: server.discordId,
         channelId: panel.channelId,
         panel: {
+          id: panel.id,
           title: panel.title,
           description: panel.description,
           prefix: panel.prefix,
@@ -312,6 +334,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         server.discordId,
         panel.channelId,
         {
+          id: panel.id,
           title: panel.title,
           description: panel.description,
           prefix: panel.prefix,

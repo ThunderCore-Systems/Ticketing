@@ -143,15 +143,16 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
           id: interaction.user.id,
           allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'],
         },
-        {
-          id: panel.supportRoleId,
+        ...panel.supportRoleIds.map(roleId => ({ 
+          id: roleId,
           allow: ['ViewChannel', 'SendMessages', 'ReadMessageHistory'],
-        },
+        })),
       ],
     });
 
     if (channel) {
       const ticket = await storage.createTicket({
+        serverId: panel.serverId,
         panelId: panel.id,
         channelId: channel.id,
         userId: interaction.user.id,
@@ -164,7 +165,10 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
         .setDescription('Support ticket created')
         .addFields(
           { name: 'Created by', value: `<@${interaction.user.id}>` },
-          { name: 'Support Team', value: `<@&${panel.supportRoleId}>` }
+          { 
+            name: 'Support Team', 
+            value: panel.supportRoleIds.map(id => `<@&${id}>`).join(', ') 
+          }
         )
         .setColor(0x00ff00);
 
@@ -180,8 +184,13 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
             .setStyle(ButtonStyle.Danger)
         );
 
+      const mentions = [
+        `<@${interaction.user.id}>`,
+        ...panel.supportRoleIds.map(id => `<@&${id}>`)
+      ].join(' ');
+
       await channel.send({
-        content: `<@${interaction.user.id}> <@&${panel.supportRoleId}>`,
+        content: mentions,
         embeds: [embed],
         components: [buttons],
       });
@@ -204,11 +213,13 @@ export async function createTicketPanel(
   guildId: string,
   channelId: string,
   panel: {
+    id: number; 
     title: string;
     description: string;
     prefix: string;
     categoryId: string;
     supportRoleIds: string[];
+    serverId: number; // Added serverId
   }
 ) {
   if (!client) throw new Error('Discord bot is not initialized');
@@ -242,7 +253,7 @@ export async function createTicketPanel(
     const button = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
         new ButtonBuilder()
-          .setCustomId(`ticket_create_${panel.prefix}`)
+          .setCustomId(`ticket_create_${panel.id}`) 
           .setLabel('Create Ticket')
           .setStyle(ButtonStyle.Primary)
       );
