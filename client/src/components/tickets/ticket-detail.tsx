@@ -13,6 +13,15 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
 import { 
   MessageSquare, 
@@ -25,8 +34,15 @@ import {
   Download,
   Ban,
   Clock,
-  Shield
+  Shield,
+  UserPlus
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Ticket, Message, User, Panel } from "@shared/schema";
 
@@ -36,6 +52,8 @@ interface TicketDetailProps {
 
 export default function TicketDetail({ ticketId }: TicketDetailProps) {
   const [newMessage, setNewMessage] = useState("");
+  const [newUserId, setNewUserId] = useState("");
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const { toast } = useToast();
 
   // Get ticket details
@@ -55,6 +73,7 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
     queryKey: [`/api/tickets/${ticketId}/messages`],
     enabled: !!ticket,
     retry: 2,
+    refetchInterval: 1000, // Poll every second for new messages
   });
 
   // Get panel details
@@ -126,7 +145,7 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
       });
       toast({
         title: "Ticket claimed",
-        description: "You have claimed this ticket.",
+        description: ticket?.claimedBy ? "You have unclaimed this ticket." : "You have claimed this ticket.",
       });
     },
   });
@@ -153,6 +172,25 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
       toast({
         title: "User banned",
         description: "The user has been banned from creating new tickets.",
+      });
+    },
+  });
+
+  const addUser = useMutation({
+    mutationFn: async (userId: string) => {
+      const res = await apiRequest("POST", `/api/tickets/${ticketId}/add-user`, {
+        userId,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      setIsAddUserOpen(false);
+      queryClient.invalidateQueries({
+        queryKey: [`/api/tickets/${ticketId}`]
+      });
+      toast({
+        title: "User added",
+        description: "User has been added to the ticket.",
       });
     },
   });
@@ -196,14 +234,23 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant={ticket.status === "open" ? "default" : "secondary"}>
-              {ticket.status}
-            </Badge>
             {ticket.claimedBy ? (
-              <Badge variant="outline" className="gap-1">
-                <UserCircle2 className="h-3 w-3" />
-                Claimed by {ticket.claimedBy === user.discordId ? 'you' : ticket.claimedBy}
-              </Badge>
+              ticket.claimedBy === user.discordId ? (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => claimTicket.mutate()}
+                  className="gap-1"
+                >
+                  <Inbox className="h-4 w-4" />
+                  Unclaim Ticket
+                </Button>
+              ) : (
+                <Badge variant="outline" className="gap-1">
+                  <UserCircle2 className="h-3 w-3" />
+                  Claimed by {ticket.claimedBy === user.discordId ? 'you' : ticket.claimedBy}
+                </Badge>
+              )
             ) : (
               <Button 
                 variant="outline" 
@@ -242,6 +289,34 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
               <Download className="h-4 w-4" />
               Save Transcript
             </Button>
+            <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1">
+                  <UserPlus className="h-4 w-4" />
+                  Add User
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Add User to Ticket</DialogTitle>
+                  <DialogDescription>
+                    Enter the Discord ID of the user you want to add to this ticket.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Input
+                      placeholder="Discord User ID"
+                      value={newUserId}
+                      onChange={(e) => setNewUserId(e.target.value)}
+                    />
+                  </div>
+                  <Button onClick={() => addUser.mutate(newUserId)}>
+                    Add User
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </CardHeader>
       </Card>
@@ -267,12 +342,12 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
                     <div
                       key={message.id}
                       className={`flex flex-col ${
-                        message.userId === user.id ? "items-end" : "items-start"
+                        message.userId === user.discordId ? "items-end" : "items-start"
                       }`}
                     >
                       <div
                         className={`max-w-[80%] rounded-lg p-3 ${
-                          message.userId === user.id
+                          message.userId === user.discordId
                             ? "bg-primary text-primary-foreground"
                             : "bg-muted"
                         }`}

@@ -4,7 +4,7 @@ import {
   type Server, type InsertServer,
   type Ticket, type InsertTicket,
   type Panel, type InsertPanel,
-  type TicketMessage
+  type Message, type TicketMessage
 } from "@shared/schema";
 import { db } from "./db";
 import { eq } from "drizzle-orm";
@@ -30,6 +30,8 @@ export interface IStorage {
   createTicket(ticket: InsertTicket): Promise<Ticket>;
   updateTicket(id: number, ticket: Partial<Ticket>): Promise<Ticket>;
   getMessagesByTicketId(ticketId: number): Promise<TicketMessage[]>;
+  getTicketByChannelId(channelId: string): Promise<Ticket | undefined>;
+  getAllTickets(): Promise<Ticket[]>;
 
   // Panels
   getPanel(id: number): Promise<Panel | undefined>;
@@ -155,6 +157,18 @@ export class DatabaseStorage implements IStorage {
       console.error('Error parsing messages:', error);
       return [];
     }
+  }
+
+  async getTicketByChannelId(channelId: string): Promise<Ticket | undefined> {
+    const [ticket] = await db
+      .select()
+      .from(tickets)
+      .where(eq(tickets.channelId, channelId));
+    return ticket;
+  }
+
+  async getAllTickets(): Promise<Ticket[]> {
+    return db.select().from(tickets);
   }
 
   // Panels

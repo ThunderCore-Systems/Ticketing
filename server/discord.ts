@@ -34,6 +34,32 @@ const commands = [
         required: true,
       }
     ],
+  },
+  {
+    name: 'upgrade',
+    type: ApplicationCommandType.ChatInput,
+    description: 'Upgrade a ticket to a higher support role',
+    options: [
+      {
+        name: 'role',
+        type: ApplicationCommandOptionType.Role,
+        description: 'The role to upgrade the ticket to',
+        required: true,
+      }
+    ],
+  },
+  {
+    name: 'add',
+    type: ApplicationCommandType.ChatInput,
+    description: 'Add a user to the current ticket',
+    options: [
+      {
+        name: 'user',
+        type: ApplicationCommandOptionType.User,
+        description: 'The user to add to the ticket',
+        required: true,
+      }
+    ],
   }
 ];
 
@@ -74,6 +100,10 @@ export async function setupDiscordBot(server: Server) {
       } else if (interaction.isChatInputCommand()) {
         if (interaction.commandName === 'ticket') {
           await handleTicketCommand(interaction);
+        } else if (interaction.commandName === 'upgrade') {
+          await handleUpgradeCommand(interaction);
+        } else if (interaction.commandName === 'add') {
+          await handleAddUserCommand(interaction);
         }
       }
     });
@@ -236,7 +266,7 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
         };
 
         // Parse existing messages
-        const parsedMessages = existingMessages.map(msg => 
+        const parsedMessages = existingMessages.map(msg =>
           typeof msg === 'string' ? JSON.parse(msg) : msg
         );
 
@@ -488,12 +518,45 @@ async function claimTicket(interaction: ButtonInteraction, ticketId: number) {
       return;
     }
 
+    // If ticket is already claimed by this user, unclaim it
+    if (ticket.claimedBy === interaction.user.id) {
+      await storage.updateTicket(ticket.id, {
+        claimedBy: null,
+      });
+
+      const embed = new EmbedBuilder()
+        .setTitle('Ticket Unclaimed')
+        .setDescription(`Ticket has been unclaimed by <@${interaction.user.id}>`)
+        .setColor(0xFF0000)
+        .setTimestamp();
+
+      await interaction.reply({
+        embeds: [embed]
+      });
+      return;
+    }
+
+    // If ticket is claimed by someone else, don't allow claiming
+    if (ticket.claimedBy) {
+      await interaction.reply({
+        content: `This ticket is already claimed by <@${ticket.claimedBy}>`,
+        ephemeral: true
+      });
+      return;
+    }
+
     await storage.updateTicket(ticket.id, {
       claimedBy: interaction.user.id,
     });
 
+    const embed = new EmbedBuilder()
+      .setTitle('Ticket Claimed')
+      .setDescription(`Ticket has been claimed by <@${interaction.user.id}>`)
+      .setColor(0x00ff00)
+      .setTimestamp();
+
     await interaction.reply({
-      content: `Ticket claimed by <@${interaction.user.id}>`,
+      embeds: [embed]
     });
   } catch (error) {
     console.error('Error claiming ticket:', error);
@@ -781,4 +844,91 @@ export async function validateRoleId(guildId: string, roleId: string) {
     console.error('Error validating role:', error);
     return null;
   }
+}
+
+async function handleUpgradeCommand(interaction: ChatInputCommandInteraction) {
+  if (!interaction.channel || !(interaction.channel instanceof TextChannel)) {
+    await interaction.reply({
+      content: 'This command can only be used in ticket channels.',
+      ephemeral: true
+    });
+    return;
+  }
+
+  const ticket = await storage.getTicketByChannelId(interaction.channel.id);
+  if (!ticket) {
+    await interaction.reply({
+      content: 'This command can only be used in ticket channels.',
+      ephemeral: true
+    });
+    return;
+  }
+
+  const role = interaction.options.getRole('role', true);
+
+  // Update channel permissions
+  await interaction.channel.permissionOverwrites.edit(role, {
+    ViewChannel: true,
+    SendMessages: true,
+    ReadMessageHistory: true,
+    ManageMessages: true,
+  });
+
+  // Get the panel to update support roles
+  const panel = await storage.getPanel(ticket.panelId);
+  if (panel) {
+    await storage.updatePanel(panel.id, {
+      supportRoleIds: [...new Set([...panel.supportRoleIds, role.id])]
+    });
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle('Ticket Upgraded')
+    .setDescription(`This ticket has been upgraded to include ${role}`)
+    .setColor(0x00ff00)
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [embed] });
+}
+
+async function handleAddUserCommand(interaction: ChatInputCommandInteraction) {
+  if (!interaction.channel || !(interaction.channel instanceof TextChannel)) {
+    await interaction.reply({
+      content: 'This command can only be used in ticket channels.',
+      ephemeral: true
+    });
+    return;
+  }
+
+  const ticket = await storage.getTicketByChannelId(interaction.channel.id);
+  if (!ticket) {
+    await interaction.reply({
+      content: 'This command can only be used in ticket channels.',
+      ephemeral: true
+    });
+    return;
+  }
+
+  const user = interaction.options.getUser('user', true);
+
+  // Update channel permissions
+  await interaction.channel.permissionOverwrites.edit(user, {
+    ViewChannel: true,
+    SendMessages: true,
+    ReadMessageHistory: true,
+  });
+
+  const embed = new EmbedBuilder()
+    .setTitle('User Added')
+    .setDescription(`${user} has been added to the ticket`)
+    .setColor(0x00ff00)
+    .setTimestamp();
+
+  await interaction.reply({ embeds: [embed] });
+}
+
+// Add this helper function
+export async function getTicketByChannelId(channelId: string) {
+  const tickets = await storage.getAllTickets();
+  return tickets.find(t => t.channelId === channelId);
 }

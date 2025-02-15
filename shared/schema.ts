@@ -68,6 +68,18 @@ export type TicketMessage = {
   createdAt: string;
 };
 
+// Add after TicketMessage type definition
+export type Message = TicketMessage & {
+  source?: 'discord' | 'dashboard';
+  isSupport?: boolean;
+  avatarUrl?: string;
+  attachments?: Array<{
+    url: string;
+    name: string;
+    contentType?: string;
+  }>;
+};
+
 // Custom types for statistics
 export type SupportTeamMember = {
   id: string;
