@@ -32,7 +32,7 @@ export const panels = pgTable("panels", {
   description: text("description").notNull(),
   channelId: text("channel_id").notNull(),
   categoryId: text("category_id").notNull(),
-  supportRoleId: text("support_role_id").notNull(),
+  supportRoleIds: text("support_role_ids").array().notNull(), // Changed to array
   prefix: text("prefix").notNull(),
 });
 

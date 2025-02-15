@@ -18,28 +18,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { PlusCircle } from "lucide-react";
+import { PlusCircle, X } from "lucide-react";
 
 interface TicketPanelsProps {
   serverId: number;
-}
-
-interface TicketPanel {
-  id: number;
-  title: string;
-  description: string;
-  channelId: string;
-  categoryId: string;
-  supportRoleId: string;
-  prefix: string;
-}
-
-interface DiscordChannel {
-  id: string;
-  name: string;
-  type: number;
 }
 
 export default function TicketPanels({ serverId }: TicketPanelsProps) {
@@ -48,23 +33,25 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
   const [description, setDescription] = useState("");
   const [channelId, setChannelId] = useState("");
   const [categoryId, setCategoryId] = useState("");
-  const [supportRoleId, setSupportRoleId] = useState("");
+  const [selectedRoleId, setSelectedRoleId] = useState("");
+  const [supportRoleIds, setSupportRoleIds] = useState<string[]>([]);
   const [prefix, setPrefix] = useState("");
 
-  const { data: panels } = useQuery<TicketPanel[]>({
-    queryKey: [`/api/servers/${serverId}/panels`],
-  });
-
-  const { data: channels } = useQuery<DiscordChannel[]>({
+  // Fetch Discord server data
+  const { data: channels } = useQuery({
     queryKey: [`/api/servers/${serverId}/channels`],
   });
 
-  const { data: categories } = useQuery<DiscordChannel[]>({
+  const { data: categories } = useQuery({
     queryKey: [`/api/servers/${serverId}/categories`],
   });
 
-  const { data: roles } = useQuery<{ id: string; name: string }[]>({
+  const { data: roles } = useQuery({
     queryKey: [`/api/servers/${serverId}/roles`],
+  });
+
+  const { data: panels } = useQuery({
+    queryKey: [`/api/servers/${serverId}/panels`],
   });
 
   const createPanel = useMutation({
@@ -74,7 +61,7 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
         description,
         channelId,
         categoryId,
-        supportRoleId,
+        supportRoleIds, // Now sending array of role IDs
         prefix: prefix.toUpperCase(),
       });
       return res.json();
@@ -84,7 +71,7 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
       setDescription("");
       setChannelId("");
       setCategoryId("");
-      setSupportRoleId("");
+      setSupportRoleIds([]);
       setPrefix("");
       queryClient.invalidateQueries({
         queryKey: [`/api/servers/${serverId}/panels`],
@@ -102,6 +89,17 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
       });
     },
   });
+
+  const handleAddRole = () => {
+    if (selectedRoleId && !supportRoleIds.includes(selectedRoleId)) {
+      setSupportRoleIds([...supportRoleIds, selectedRoleId]);
+      setSelectedRoleId("");
+    }
+  };
+
+  const handleRemoveRole = (roleId: string) => {
+    setSupportRoleIds(supportRoleIds.filter(id => id !== roleId));
+  };
 
   return (
     <div className="space-y-6">
@@ -162,7 +160,7 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
                 <SelectValue placeholder="Select channel for the panel" />
               </SelectTrigger>
               <SelectContent>
-                {channels?.filter(c => c.type === 0).map((channel) => (
+                {channels?.map((channel) => (
                   <SelectItem key={channel.id} value={channel.id}>
                     #{channel.name}
                   </SelectItem>
@@ -180,7 +178,7 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
                 <SelectValue placeholder="Select category for new tickets" />
               </SelectTrigger>
               <SelectContent>
-                {categories?.filter(c => c.type === 4).map((category) => (
+                {categories?.map((category) => (
                   <SelectItem key={category.id} value={category.id}>
                     {category.name}
                   </SelectItem>
@@ -191,26 +189,60 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
 
           <div className="space-y-2">
             <label className="text-sm font-medium">
-              Support Role
+              Support Roles
             </label>
-            <Select value={supportRoleId} onValueChange={setSupportRoleId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select support team role" />
-              </SelectTrigger>
-              <SelectContent>
-                {roles?.map((role) => (
-                  <SelectItem key={role.id} value={role.id}>
-                    @{role.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <Select value={selectedRoleId} onValueChange={setSelectedRoleId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select support team role" />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles?.map((role) => (
+                    <SelectItem key={role.id} value={role.id}>
+                      @{role.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button 
+                variant="outline" 
+                size="icon"
+                onClick={handleAddRole}
+                disabled={!selectedRoleId}
+              >
+                <PlusCircle className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {supportRoleIds.map(roleId => {
+                const role = roles?.find(r => r.id === roleId);
+                return (
+                  <Badge key={roleId} variant="secondary" className="flex items-center gap-1">
+                    @{role?.name}
+                    <button
+                      onClick={() => handleRemoveRole(roleId)}
+                      className="ml-1 hover:text-destructive"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                );
+              })}
+            </div>
           </div>
         </CardContent>
         <CardFooter>
           <Button
             onClick={() => createPanel.mutate()}
-            disabled={!title || !description || !channelId || !categoryId || !supportRoleId || !prefix || createPanel.isPending}
+            disabled={
+              !title || 
+              !description || 
+              !channelId || 
+              !categoryId || 
+              supportRoleIds.length === 0 || 
+              !prefix || 
+              createPanel.isPending
+            }
           >
             <PlusCircle className="mr-2 h-4 w-4" />
             Create Panel
@@ -230,14 +262,16 @@ export default function TicketPanels({ serverId }: TicketPanelsProps) {
                 <p>Prefix: {panel.prefix}</p>
                 <p>Channel: #{channels?.find(c => c.id === panel.channelId)?.name}</p>
                 <p>Category: {categories?.find(c => c.id === panel.categoryId)?.name}</p>
-                <p>Support Role: @{roles?.find(r => r.id === panel.supportRoleId)?.name}</p>
+                <div className="flex flex-wrap gap-2">
+                  <span>Support Roles:</span>
+                  {panel.supportRoleIds.map(roleId => (
+                    <Badge key={roleId} variant="secondary">
+                      @{roles?.find(r => r.id === roleId)?.name}
+                    </Badge>
+                  ))}
+                </div>
               </div>
             </CardContent>
-            <CardFooter>
-              <Button variant="outline" className="w-full">
-                View Details
-              </Button>
-            </CardFooter>
           </Card>
         ))}
       </div>

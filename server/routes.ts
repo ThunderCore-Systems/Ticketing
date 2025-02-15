@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { z } from "zod";
 import { insertTicketSchema, insertMessageSchema, insertServerSchema } from "@shared/schema";
-import { setupDiscordBot } from "./discord";
+import { setupDiscordBot, getServerChannels, getServerCategories, getServerRoles } from "./discord";
 import { setupStripeWebhooks, createSubscription } from "./stripe";
 import session from "express-session";
 import passport from "passport";
