@@ -138,7 +138,7 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
         queryKey: [`/api/tickets/${ticketId}`]
       });
       toast({
-        title: "Ticket updated",
+        title: "Success",
         description: `Ticket has been ${ticket?.status === 'open' ? 'closed' : 'reopened'}.`,
       });
     },
@@ -181,7 +181,7 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
     }
   });
 
-  // Update the saveTranscript mutation
+
   const saveTranscript = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/tickets/${ticketId}/transcript`);
@@ -262,6 +262,10 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
 
   const upgradeTicket = useMutation({
     mutationFn: async (roleId: string) => {
+      if (!roleId) {
+        throw new Error('Please select a role first');
+      }
+
       const res = await apiRequest("POST", `/api/tickets/${ticketId}/upgrade`, {
         roleId,
       });
@@ -381,15 +385,6 @@ export default function TicketDetail({ ticketId }: TicketDetailProps) {
                   Reopen Ticket
                 </>
               )}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => saveTranscript.mutate()}
-              className="gap-1"
-            >
-              <Download className="h-4 w-4" />
-              Save Transcript
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

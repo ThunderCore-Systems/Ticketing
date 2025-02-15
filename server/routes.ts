@@ -10,15 +10,15 @@ import {
   getServerRoles,
   createTicketPanel,
   sendWebhookMessage,
-  client,
-  validateRoleId
+  validateRoleId,
+  client
 } from "./discord";
 import { setupStripeWebhooks, createSubscription } from "./stripe";
 import session from "express-session";
 import passport from "passport";
 import { Strategy as DiscordStrategy } from "passport-discord";
 import type { DiscordGuild, TicketMessage } from "./types";
-import { Client, TextChannel, EmbedBuilder } from 'discord.js';
+import { TextChannel, EmbedBuilder } from 'discord.js';
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
@@ -480,23 +480,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       if (ticket.channelId) {
-        const embed = new EmbedBuilder()
-          .setTitle(status === 'closed' ? 'Ticket Closed' : 'Ticket Reopened')
-          .setDescription(status === 'closed' ? 
-            `Ticket closed by <@${(req.user as any).discordId}>` :
-            `Ticket reopened by <@${(req.user as any).discordId}>`)
-          .setColor(status === 'closed' ? 0xFF0000 : 0x00FF00)
-          .setTimestamp();
+        const channel = await client?.channels.fetch(ticket.channelId);
+        if (channel instanceof TextChannel) {
+          if (status === 'closed') {
+            // Remove user's access when closing
+            await channel.permissionOverwrites.edit(ticket.userId, {
+              ViewChannel: false,
+            });
 
-        await sendWebhookMessage(
-          ticket.channelId,
-          '',
-          (req.user as any).username,
-          server.anonymousMode || false,
-          server.webhookAvatar,
-          (req.user as any).avatarUrl,
-          [embed]
-        );
+            // Create support team control panel
+            const controlPanel = new EmbedBuilder()
+              .setTitle('Ticket Controls')
+              .setDescription('This ticket has been closed. Use the buttons below to manage the ticket.')
+              .setColor(0xFF0000)
+              .setTimestamp();
+
+            // Send webhook message with closure notification
+            const closeEmbed = new EmbedBuilder()
+              .setTitle('Ticket Closed')
+              .setDescription(`Ticket closed by <@${(req.user as any).discordId}>`)
+              .setColor(0xFF0000)
+              .setTimestamp();
+
+            await sendWebhookMessage(
+              ticket.channelId,
+              '',
+              (req.user as any).username,
+              server.anonymousMode || false,
+              server.webhookAvatar,
+              (req.user as any).avatarUrl,
+              [closeEmbed, controlPanel]
+            );
+          } else {
+            // Reopening ticket
+            await channel.permissionOverwrites.edit(ticket.userId, {
+              ViewChannel: true,
+              SendMessages: true,
+              ReadMessageHistory: true,
+            });
+
+            const reopenEmbed = new EmbedBuilder()
+              .setTitle('Ticket Reopened')
+              .setDescription(`Ticket reopened by <@${(req.user as any).discordId}>`)
+              .setColor(0x00FF00)
+              .setTimestamp();
+
+            await sendWebhookMessage(
+              ticket.channelId,
+              '',
+              (req.user as any).username,
+              server.anonymousMode || false,
+              server.webhookAvatar,
+              (req.user as any).avatarUrl,
+              [reopenEmbed]
+            );
+          }
+        }
       }
 
       res.json(updatedTicket);
@@ -622,30 +661,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error upgrading ticket:', error);
       res.status(500).json({ message: 'Failed to upgrade ticket' });
-    }
-  });
-
-  app.get('/api/tickets/:ticketId', requireAuth, async (req, res) => {
-    try {
-      const ticket = await storage.getTicket(parseInt(req.params.ticketId));
-
-      if (!ticket) {
-        return res.status(404).json({ message: 'Ticket not found' });
-      }
-
-      const server = await storage.getServer(ticket.serverId);
-      if (!server) {
-        return res.status(404).json({ message: 'Server not found' });
-      }
-
-      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
-        return res.status(403).json({ message: 'Not authorized to view this ticket' });
-      }
-
-      res.json(ticket);
-    } catch (error) {
-      console.error('Error fetching ticket:', error);
-      res.status(500).json({ message: 'Failed to fetch ticket details' });
     }
   });
 
@@ -1164,11 +1179,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error('Failed to initialize Discord bot:', error);
   });
 
-  return httpServer;
-}
+  async function validateRoleId(guildId: string, roleId: string): Promise<any | null> {
+    try {
+      const guild = await client?.guilds.fetch(guildId);
+      if (!guild) {
+        throw new Error('Guild not found');
+      }
 
-async function validateRoleId(guildId: string, roleId: string): Promise<any | null> {
-  return null; 
+      const role = await guild.roles.fetch(roleId);
+      return role;
+    } catch (error) {
+      console.error('Error validating role:', error);
+      return null;
+    }
+  }
+
+  return httpServer;
 }
 
 let client: Client;
