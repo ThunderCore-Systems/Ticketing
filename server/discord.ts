@@ -238,6 +238,14 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
       await storage.updateTicket(ticket.id, {
         messages: [...existingMessages, JSON.stringify(newMessage)],
       });
+
+      // Log for debugging
+      console.log('Discord message stored:', {
+        ticketId: ticket.id,
+        messageContent: message.content,
+        authorId: message.author.id,
+        authorName: message.member?.displayName || message.author.username
+      });
     });
 
     // Create ticket management buttons

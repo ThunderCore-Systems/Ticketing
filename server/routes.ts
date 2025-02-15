@@ -559,9 +559,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const staffMessages = messages.filter(m => m.userId === ticket.claimedBy);
             member.totalMessages += staffMessages.length;
 
-            // Track messages by source
+            // Track messages by source and update user info
             staffMessages.forEach(msg => {
               member.messagesBySource[msg.source]++;
+
+              // Update member name and avatar if not set
+              if (!member.name || !member.avatar) {
+                member.name = msg.username;
+                member.avatar = msg.avatarUrl || msg.avatar;
+              }
             });
 
             // Process first response time
@@ -578,22 +584,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
               member.slowestResponse = Math.max(member.slowestResponse, responseTime);
             }
 
-            // Update activity patterns and user info
+            // Update activity patterns
             messages.forEach(msg => {
               if (msg.userId === ticket.claimedBy) {
                 const msgDate = new Date(msg.createdAt);
                 member.peakHours[msgDate.getHours()]++;
                 member.weekdayActivity[msgDate.getDay()]++;
 
-                // Update last active time and user info
+                // Update last active time
                 if (!member.lastActive || msgDate > new Date(member.lastActive)) {
                   member.lastActive = msgDate;
-                  member.name = msg.username;
-                  member.avatar = msg.avatarUrl || msg.avatar;
                 }
               }
             });
           }
+
+          // Use Discord ID as fallback name if no messages found
+          if (!member.name) {
+            member.name = `Discord User ${member.id}`;
+          }
+
 
           // Track ticket categories
           if (ticket.category) {
