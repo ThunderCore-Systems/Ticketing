@@ -76,6 +76,8 @@ const commands = [
   },
 ];
 
+export { client };
+
 export async function setupDiscordBot(server: Server) {
   try {
     console.log('Starting Discord bot initialization...');
@@ -91,7 +93,6 @@ export async function setupDiscordBot(server: Server) {
     client.once("ready", async () => {
       console.log(`Discord bot successfully logged in as ${client?.user?.tag}`);
 
-      // Register slash commands
       try {
         if (!client?.user) throw new Error("Client user is not defined");
 
@@ -108,31 +109,38 @@ export async function setupDiscordBot(server: Server) {
     });
 
     client.on("interactionCreate", async (interaction) => {
-      if (interaction.isButton()) {
-        await handleButtonInteraction(interaction);
-      } else if (interaction.isChatInputCommand()) {
-        if (interaction.commandName === 'ticket') {
-          await handleTicketCommand(interaction);
-        } else if (interaction.commandName === 'upgrade') {
-          await handleUpgradeCommand(interaction);
-        } else if (interaction.commandName === 'add') {
-          await handleAddUserCommand(interaction);
-        } else if (interaction.commandName === 'remove') {
-          await handleRemoveUserCommand(interaction);
+      try {
+        if (interaction.isButton()) {
+          await handleButtonInteraction(interaction);
+        } else if (interaction.isChatInputCommand()) {
+          if (interaction.commandName === 'ticket') {
+            await handleTicketCommand(interaction);
+          } else if (interaction.commandName === 'upgrade') {
+            await handleUpgradeCommand(interaction);
+          } else if (interaction.commandName === 'add') {
+            await handleAddUserCommand(interaction);
+          } else if (interaction.commandName === 'remove') {
+            await handleRemoveUserCommand(interaction);
+          }
+        }
+      } catch (error) {
+        console.error('Error handling interaction:', error);
+        if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
+          await interaction.reply({
+            content: 'There was an error processing your request.',
+            ephemeral: true
+          }).catch(console.error);
         }
       }
     });
 
-    // Login in a non-blocking way
-    client.login(process.env.DISCORD_BOT_TOKEN).catch((error) => {
-      console.error('Failed to login to Discord:', error);
-      client = null;
-    });
+    await client.login(process.env.DISCORD_BOT_TOKEN);
 
-    return;
+    return client;
   } catch (error) {
     console.error('Error in Discord bot setup:', error);
     client = null;
+    throw error;
   }
 }
 
@@ -190,7 +198,6 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
     const ticketNumber = await getNextTicketNumber(panel.prefix);
     const ticketName = `${panel.prefix}-${ticketNumber}`;
 
-    // Create channel with proper permissions
     const channel = await interaction.guild?.channels.create({
       name: ticketName.toLowerCase(),
       type: ChannelType.GuildText,
@@ -215,7 +222,6 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
       throw new Error('Failed to create ticket channel');
     }
 
-    // Create ticket in database
     const ticket = await storage.createTicket({
       serverId: panel.serverId,
       panelId: panel.id,
@@ -224,10 +230,9 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
       number: ticketNumber,
       status: 'open',
       claimedBy: null,
-      messages: [], // Initialize empty messages array
+      messages: [],
     });
 
-    // Create welcome embed
     const welcomeEmbed = new EmbedBuilder()
       .setTitle(`Welcome to Ticket: ${ticketName}`)
       .setDescription(`Hello ${interaction.user}, welcome to your ticket.\nOur support team will be with you shortly.`)
@@ -238,7 +243,6 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
       .setColor(0x00ff00)
       .setTimestamp();
 
-    // Create initial message object for the ticket
     const initialMessage = {
       id: 1,
       content: welcomeEmbed.data.description || '',
@@ -250,15 +254,13 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
       embedData: welcomeEmbed.toJSON(),
     };
 
-    // Update ticket with initial message
     await storage.updateTicket(ticket.id, {
       messages: [JSON.stringify(initialMessage)],
     });
 
-    // Set up message collector for the channel
     const collector = channel.createMessageCollector();
     collector.on('collect', async (message) => {
-      if (message.author.bot) return; // Skip bot messages
+      if (message.author.bot) return;
 
       try {
         const existingTicket = await storage.getTicket(ticket.id);
@@ -280,12 +282,10 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
           })),
         };
 
-        // Parse existing messages
         const parsedMessages = existingMessages.map(msg =>
           typeof msg === 'string' ? JSON.parse(msg) : msg
         );
 
-        // Update ticket with new message
         await storage.updateTicket(ticket.id, {
           messages: [...parsedMessages, newMessage].map(msg => JSON.stringify(msg)),
         });
@@ -302,7 +302,6 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
       }
     });
 
-    // Create ticket management buttons
     const buttons = new ActionRowBuilder<ButtonBuilder>()
       .addComponents(
         new ButtonBuilder()
@@ -315,20 +314,17 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
           .setStyle(ButtonStyle.Danger)
       );
 
-    // Mention all relevant roles and the user
     const mentions = [
       `<@${interaction.user.id}>`,
       ...panel.supportRoleIds.map((id: string) => `<@&${id}>`)
     ].join(' ');
 
-    // Send the initial message
     await channel.send({
       content: mentions,
       embeds: [welcomeEmbed],
       components: [buttons],
     });
 
-    // Confirm ticket creation to user
     await interaction.reply({
       content: `Your ticket has been created in ${channel}`,
       ephemeral: true
@@ -477,7 +473,6 @@ async function closeTicket(interaction: ButtonInteraction, ticketId: number) {
 
     const channel = interaction.channel as TextChannel;
 
-    // Create support team control panel
     const controlPanel = new EmbedBuilder()
       .setTitle('Ticket Controls')
       .setDescription('This ticket has been closed. Use the buttons below to manage the ticket.')
@@ -504,7 +499,6 @@ async function closeTicket(interaction: ButtonInteraction, ticketId: number) {
       components: [buttons],
     });
 
-    // Remove user's access to the channel
     await channel.permissionOverwrites.edit(ticket.userId, {
       ViewChannel: false,
     });
@@ -533,7 +527,6 @@ async function claimTicket(interaction: ButtonInteraction, ticketId: number) {
       return;
     }
 
-    // If ticket is already claimed by this user, unclaim it
     if (ticket.claimedBy === interaction.user.id) {
       await storage.updateTicket(ticket.id, {
         claimedBy: null,
@@ -551,7 +544,6 @@ async function claimTicket(interaction: ButtonInteraction, ticketId: number) {
       return;
     }
 
-    // If ticket is claimed by someone else, don't allow claiming
     if (ticket.claimedBy) {
       await interaction.reply({
         content: `This ticket is already claimed by <@${ticket.claimedBy}>`,
@@ -603,7 +595,6 @@ async function handleTicketCommand(interaction: ChatInputCommandInteraction) {
       return;
     }
 
-    // Check subscription status
     if (!server.subscriptionStatus || server.subscriptionStatus !== 'active') {
       await interaction.reply({
         content: "This server needs an active subscription to create tickets. Please visit the dashboard to subscribe.",
@@ -623,7 +614,6 @@ async function handleTicketCommand(interaction: ChatInputCommandInteraction) {
       messages: []
     });
 
-    // Create Discord channel for ticket
     const channel = await interaction.guild?.channels.create({
       name: `ticket-${ticket.id}`,
       topic: title,
@@ -669,14 +659,14 @@ export async function closeTicketChannel(channelId: string) {
   }
 }
 
-// Updated sendWebhookMessage function
 export async function sendWebhookMessage(
   channelId: string,
   content: string,
   username: string,
   anonymousMode: boolean = false,
   webhookAvatar?: string | null,
-  userAvatarUrl?: string | null
+  userAvatarUrl?: string | null,
+  embeds?: EmbedBuilder[]
 ) {
   if (!client) {
     console.error('Discord bot is not initialized');
@@ -707,6 +697,7 @@ export async function sendWebhookMessage(
       content,
       username: anonymousMode ? 'Support Team' : `${username} (Support Team)`,
       avatarURL: anonymousMode ? undefined : userAvatarUrl || undefined,
+      embeds: embeds?.map(embed => embed.toJSON())
     });
   } catch (error) {
     console.error('Error sending webhook message:', error);
@@ -734,7 +725,6 @@ async function saveTranscript(interaction: ButtonInteraction, ticketId: number) 
       return;
     }
 
-    // Process messages for transcript
     const messages = ticket.messages ? ticket.messages.map(msg =>
       typeof msg === 'string' ? JSON.parse(msg) : msg
     ) : [];
@@ -743,13 +733,11 @@ async function saveTranscript(interaction: ButtonInteraction, ticketId: number) 
     transcript += `Created: ${new Date(ticket.createdAt || Date.now()).toLocaleString()}\n`;
     transcript += `Status: ${ticket.status}\n\n`;
 
-    // Format messages with source information
     messages.forEach(msg => {
       const timestamp = new Date(msg.createdAt).toLocaleString();
       const source = msg.source === 'discord' ? '[Discord]' : '[Dashboard]';
       transcript += `[${timestamp}] ${source} ${msg.username}: ${msg.content}\n`;
 
-      // Add attachment information
       if (msg.attachments?.length > 0) {
         msg.attachments.forEach((att: any) => {
           transcript += `  📎 Attachment: ${att.name} - ${att.url}\n`;
@@ -763,7 +751,6 @@ async function saveTranscript(interaction: ButtonInteraction, ticketId: number) 
       { name: `ticket-${ticket.number}-transcript.txt` }
     );
 
-    // Send to transcript channel
     const transcriptChannel = await client?.channels.fetch(panel.transcriptChannelId) as TextChannel;
     if (transcriptChannel) {
       const transcriptEmbed = new EmbedBuilder()
@@ -810,7 +797,6 @@ async function deleteTicketChannel(interaction: ButtonInteraction, ticketId: num
     const channel = interaction.channel as TextChannel;
     await channel.delete();
 
-    // Update ticket in database
     await storage.updateTicket(ticket.id, {
       channelId: null,
       deletedAt: new Date(),
@@ -837,7 +823,6 @@ function formatDuration(start?: Date | null, end?: Date | null): string {
   return `${minutes}m`;
 }
 
-// Add this helper function
 export async function getTicketByChannelId(channelId: string) {
   const tickets = await storage.getAllTickets();
   return tickets.find(t => t.channelId === channelId);
@@ -863,7 +848,6 @@ async function handleUpgradeCommand(interaction: ChatInputCommandInteraction) {
 
   const role = interaction.options.getRole('role', true);
 
-  // Update channel permissions
   await interaction.channel.permissionOverwrites.edit(role, {
     ViewChannel: true,
     SendMessages: true,
@@ -871,7 +855,6 @@ async function handleUpgradeCommand(interaction: ChatInputCommandInteraction) {
     ManageMessages: true,
   });
 
-  // Get the panel to update support roles
   const panel = await storage.getPanel(ticket.panelId);
   if (panel) {
     await storage.updatePanel(panel.id, {
@@ -908,7 +891,6 @@ async function handleAddUserCommand(interaction: ChatInputCommandInteraction) {
 
   const user = interaction.options.getUser('user', true);
 
-  // Update channel permissions
   await interaction.channel.permissionOverwrites.edit(user, {
     ViewChannel: true,
     SendMessages: true,
@@ -924,7 +906,6 @@ async function handleAddUserCommand(interaction: ChatInputCommandInteraction) {
   await interaction.reply({ embeds: [embed] });
 }
 
-// Add a new function for validating role IDs
 export async function validateRoleId(guildId: string, roleId: string) {
   if (!client) throw new Error('Discord bot is not initialized');
 
@@ -968,7 +949,6 @@ async function handleRemoveUserCommand(interaction: ChatInputCommandInteraction)
 
   const user = interaction.options.getUser('user', true);
 
-  // Remove channel permissions
   await interaction.channel.permissionOverwrites.delete(user);
 
   const embed = new EmbedBuilder()

@@ -18,13 +18,12 @@ import session from "express-session";
 import passport from "passport";
 import { Strategy as DiscordStrategy } from "passport-discord";
 import type { DiscordGuild, TicketMessage } from "./types";
-import { Client, TextChannel, EmbedBuilder } from 'discord.js'; //Import necessary Discord.js modules
+import { Client, TextChannel, EmbedBuilder } from 'discord.js';
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
 const DISCORD_CALLBACK_URL = 'https://ad7a4acc-d2b0-41d3-9fcb-5265de129fe6-00-h99bmtj9jxc4.spock.replit.dev/api/auth/discord/callback';
 
-// Add authentication middleware
 function requireAuth(req: any, res: any, next: any) {
   if (!req.user) {
     return res.status(401).json({ message: 'Not authenticated' });
@@ -34,7 +33,6 @@ function requireAuth(req: any, res: any, next: any) {
 
 async function registerUserServers(userId: number, guilds: DiscordGuild[]) {
   for (const guild of guilds) {
-    // Only register servers where the user is an admin
     if (guild.owner || (BigInt(guild.permissions) & BigInt(0x8)) === BigInt(0x8)) {
       const existingServer = await storage.getServerByDiscordId(guild.id);
       if (!existingServer) {
@@ -54,7 +52,6 @@ async function registerUserServers(userId: number, guilds: DiscordGuild[]) {
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
-  // Session setup
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || "dev-secret",
     resave: false,
@@ -70,7 +67,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Discord OAuth strategy with improved error handling
   passport.use(new DiscordStrategy({
     clientID: DISCORD_CLIENT_ID,
     clientSecret: DISCORD_CLIENT_SECRET,
@@ -103,7 +99,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Register user's servers
       if (profile.guilds) {
         await registerUserServers(user.id, profile.guilds);
       }
@@ -128,7 +123,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Auth routes
   app.get('/api/auth/discord', passport.authenticate('discord'));
   app.get('/api/auth/discord/callback',
     passport.authenticate('discord', {
@@ -150,7 +144,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(req.user);
   });
 
-  // Protected routes - add requireAuth middleware
   app.get('/api/servers', requireAuth, async (req, res) => {
     const servers = await storage.getServersByUserId((req.user as any).id);
     res.json(servers);
@@ -164,7 +157,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Ensure user has access to this server
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized to view this server' });
       }
@@ -198,7 +190,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Ticket not found' });
       }
 
-      // Parse and format messages
       const messages = (ticket.messages || []).map(msg => {
         const message = typeof msg === 'string' ? JSON.parse(msg) : msg;
         return {
@@ -215,7 +206,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update message schema for better Discord integration
   const messageSchema = z.object({
     content: z.string().min(1, "Message content is required"),
     source: z.enum(["discord", "dashboard"]).default("dashboard"),
@@ -223,7 +213,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     avatarUrl: z.string().optional(),
   });
 
-  // Update existing message endpoint to handle source
   app.post('/api/tickets/:ticketId/messages', requireAuth, async (req, res) => {
     try {
       const ticketId = parseInt(req.params.ticketId);
@@ -240,7 +229,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { content, source } = messageSchema.parse(req.body);
 
-      // Get existing messages
       const existingMessages = ticket.messages || [];
       const newMessage = {
         id: existingMessages.length + 1,
@@ -252,12 +240,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdAt: new Date().toISOString()
       };
 
-      // Update ticket with new message
       await storage.updateTicket(ticketId, {
         messages: [...existingMessages, JSON.stringify(newMessage)],
       });
 
-      // Send webhook message if the user is support staff
       if (server.ownerId === (req.user as any).id || server.claimedByUserId === (req.user as any).id) {
         await sendWebhookMessage(
           ticket.channelId!,
@@ -284,13 +270,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Ticket not found' });
       }
 
-      // Get server to check permissions
       const server = await storage.getServer(ticket.serverId);
       if (!server) {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check if user has access to this server's tickets
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized to view this ticket' });
       }
@@ -303,7 +287,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
 
-  // Add this new ticket management routes after the existing ticket routes
+  // Add these new ticket management routes after the existing ticket routes
   app.post('/api/tickets/:ticketId/claim', requireAuth, async (req, res) => {
     try {
       const ticketId = parseInt(req.params.ticketId);
@@ -328,7 +312,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         claimedBy: ticket.claimedBy === (req.user as any).discordId ? null : (req.user as any).discordId
       });
 
-      // Send webhook message
       if (ticket.channelId) {
         const embed = new EmbedBuilder()
           .setTitle(updatedTicket.claimedBy ? 'Ticket Claimed' : 'Ticket Unclaimed')
@@ -356,7 +339,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/tickets/:ticketId/transcript', requireAuth, async (req, res) => {
+  app.post('/api/tickets/:ticketId/add-user', requireAuth, async (req, res) => {
     try {
       const ticketId = parseInt(req.params.ticketId);
       const ticket = await storage.getTicket(ticketId);
@@ -375,11 +358,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: 'Not authorized' });
       }
 
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ message: 'User ID is required' });
+      }
+
       if (!ticket.channelId) {
         return res.status(400).json({ message: 'No Discord channel associated with this ticket' });
       }
 
-      // Send transcript message
+      const channel = await client?.channels.fetch(ticket.channelId);
+      if (channel instanceof TextChannel) {
+        await channel.permissionOverwrites.edit(userId, {
+          ViewChannel: true,
+          SendMessages: true,
+          ReadMessageHistory: true,
+        });
+
+        const embed = new EmbedBuilder()
+          .setTitle('User Added')
+          .setDescription(`<@${userId}> has been added to the ticket`)
+          .setColor(0x00FF00)
+          .setTimestamp();
+
+        await sendWebhookMessage(
+          ticket.channelId,
+          '',
+          (req.user as any).username,
+          server.anonymousMode || false,
+          server.webhookAvatar,
+          (req.user as any).avatarUrl,
+          [embed]
+        );
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error adding user:', error);
+      res.status(500).json({ message: 'Failed to add user' });
+    }
+  });
+
+  app.post('/api/tickets/:ticketId/transcript', requireAuth, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const ticket = await storage.getTicket(ticketId);
+
+      if (!ticket) {
+        return res.status(404).json({ message: 'Ticket not found' });
+      }
+
+      const server = await storage.getServer(ticket.serverId);
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: 'Not authorized' });
+      }
+
+      if (!ticket.channelId) {
+        return res.status(400).json({ message: 'No Discord channel associated with this ticket' });
+      }
+
       const messages = await storage.getMessagesByTicketId(ticketId);
       const transcriptText = messages.map(msg => {
         const message = typeof msg === 'string' ? JSON.parse(msg) : msg;
@@ -423,7 +464,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Verify user permission
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
@@ -439,7 +479,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         closedBy: status === 'closed' ? (req.user as any).discordId : null
       });
 
-      // Send webhook message
       if (ticket.channelId) {
         const embed = new EmbedBuilder()
           .setTitle(status === 'closed' ? 'Ticket Closed' : 'Ticket Reopened')
@@ -481,7 +520,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Verify user permission
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
@@ -491,7 +529,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'User ID is required' });
       }
 
-      // Remove user permissions in Discord
       if (ticket.channelId) {
         const channel = await client.channels.fetch(ticket.channelId);
         if (channel instanceof TextChannel) {
@@ -499,7 +536,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Send webhook message about user removal
       if (ticket.channelId) {
         const embed = new EmbedBuilder()
           .setTitle('User Removed')
@@ -539,7 +575,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Verify user permission
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
@@ -549,13 +584,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Role ID is required' });
       }
 
-      // Validate role
       const role = await validateRoleId(server.discordId, roleId);
       if (!role) {
         return res.status(400).json({ message: 'Invalid role ID' });
       }
 
-      // Update channel permissions
       if (ticket.channelId) {
         const channel = await client.channels.fetch(ticket.channelId);
         if (channel instanceof TextChannel) {
@@ -567,7 +600,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Send webhook message about ticket upgrade
       if (ticket.channelId) {
         const embed = new EmbedBuilder()
           .setTitle('Ticket Upgraded')
@@ -601,13 +633,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Ticket not found' });
       }
 
-      // Get server to check permissions
       const server = await storage.getServer(ticket.serverId);
       if (!server) {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check if user has access to this server's tickets
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized to view this ticket' });
       }
@@ -627,13 +657,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Panel not found' });
       }
 
-      // Get server to check permissions
       const server = await storage.getServer(panel.serverId);
       if (!server) {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check if user has access to this server's panels
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized to view this panel' });
       }
@@ -645,13 +673,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  //Add new endpoint for activating servers with tokens
   app.post('/api/servers/:serverId/activate', requireAuth, async (req, res) => {
     try {
       const serverId = parseInt(req.params.serverId);
       const userId = (req.user as any).id;
 
-      // Get user and check tokens
       const user = await storage.getUser(userId);
       if (!user || !user.serverTokens || user.serverTokens <= 0) {
         return res.status(400).json({
@@ -659,12 +685,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Update user's tokens
       await storage.updateUser(userId, {
         serverTokens: user.serverTokens - 1
       });
 
-      // Activate the server
       const server = await storage.updateServer(serverId, {
         subscriptionStatus: "active",
         claimedByUserId: userId
@@ -677,7 +701,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Add new endpoint for role validation
   app.post('/api/servers/:serverId/validate-role', requireAuth, async (req, res) => {
     try {
       const server = await storage.getServer(parseInt(req.params.serverId));
@@ -685,7 +708,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check access
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
@@ -701,7 +723,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: 'Invalid role ID' });
       }
 
-      // Update server with new ticket manager role
       const updatedServer = await storage.updateServer(server.id, {
         ticketManagerRoleId: roleId
       });
@@ -716,7 +737,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Discord server information endpoints
   app.get('/api/servers/:serverId/channels', requireAuth, async (req, res) => {
     try {
       const server = await storage.getServer(parseInt(req.params.serverId));
@@ -724,7 +744,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check access
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
@@ -744,7 +763,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check access
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
@@ -757,7 +775,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Change the server routes for roles endpoint
   app.get('/api/servers/:serverId/roles', requireAuth, async (req, res) => {
     try {
       const server = await storage.getServer(parseInt(req.params.serverId));
@@ -765,12 +782,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check access
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
 
-      // Get roles from Discord and return them directly
       const roles = await getServerRoles(server.discordId);
       res.json(roles.filter(role => role.name !== '@everyone'));
     } catch (error) {
@@ -782,7 +797,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Update server settings endpoint
   app.patch('/api/servers/:serverId', requireAuth, async (req, res) => {
     try {
       const serverId = parseInt(req.params.serverId);
@@ -792,12 +806,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check access
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
 
-      // Update server settings
       const updatedServer = await storage.updateServer(serverId, req.body);
       res.json(updatedServer);
     } catch (error) {
@@ -809,7 +821,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Replace the existing support stats endpoint
   app.get('/api/servers/:serverId/support-stats', requireAuth, async (req, res) => {
     try {
       const server = await storage.getServer(parseInt(req.params.serverId));
@@ -817,21 +828,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check access
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
 
-      // Get all tickets for this server
       const tickets = await storage.getTicketsByServerId(server.id);
 
-      // Create a map to track support member stats
       const supportMembers = new Map();
 
-      // Process ticket data
       tickets.forEach(ticket => {
         if (ticket.claimedBy) {
-          // Initialize member stats if not exists
           if (!supportMembers.has(ticket.claimedBy)) {
             supportMembers.set(ticket.claimedBy, {
               id: ticket.claimedBy,
@@ -860,8 +866,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const member = supportMembers.get(ticket.claimedBy);
           member.ticketsHandled++;
 
-          if (ticket.status === "closed") {
-            member.resolvedTickets++;
+          if (ticket.status === "closed") {            member.resolvedTickets++;
             if (ticket.closedAt && ticket.createdAt) {
               const resolutionTime = new Date(ticket.closedAt).getTime() - new Date(ticket.createdAt).getTime();
               member.averageResolutionTime = 
@@ -869,28 +874,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
 
-          // Process messages, including both Discord and dashboard messages
           if (ticket.messages && Array.isArray(ticket.messages)) {
             const messages = ticket.messages.map(msg => 
               typeof msg === 'string' ? JSON.parse(msg) : msg
             );
 
-            // Count staff messages from both sources
             const staffMessages = messages.filter(m => m.userId === ticket.claimedBy);
             member.totalMessages += staffMessages.length;
 
-            // Track messages by source and update user info
             staffMessages.forEach(msg => {
               member.messagesBySource[msg.source]++;
 
-              // Update member name and avatar if not set
               if (!member.name || !member.avatar) {
                 member.name = msg.username;
                 member.avatar = msg.avatarUrl || msg.avatar;
               }
             });
 
-            // Process first response time
             const userFirstMessage = messages[0];
             const staffFirstResponse = messages.find(m => m.userId === ticket.claimedBy);
 
@@ -899,19 +899,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
               member.totalResponseTime += responseTime;
               member.ticketsWithResponse++;
 
-              // Track fastest and slowest responses
               member.fastestResponse = Math.min(member.fastestResponse, responseTime);
               member.slowestResponse = Math.max(member.slowestResponse, responseTime);
             }
 
-            // Update activity patterns
             messages.forEach(msg => {
               if (msg.userId === ticket.claimedBy) {
                 const msgDate = new Date(msg.createdAt);
                 member.peakHours[msgDate.getHours()]++;
                 member.weekdayActivity[msgDate.getDay()]++;
 
-                // Update last active time
                 if (!member.lastActive || msgDate > new Date(member.lastActive)) {
                   member.lastActive = msgDate;
                 }
@@ -919,12 +916,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
           }
 
-          // Use Discord ID as fallback name if no messages found
           if (!member.name) {
             member.name = `Discord User ${member.id}`;
           }
 
-          // Track ticket categories
           if (ticket.category) {
             const currentCount = member.categories.get(ticket.category) || 0;
             member.categories.set(ticket.category, currentCount + 1);
@@ -932,7 +927,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
 
-      // Calculate final stats for each member
       const stats = Array.from(supportMembers.values()).map(member => ({
         id: member.id,
         name: member.name || 'Unknown User',
@@ -941,10 +935,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ticketsHandled: member.ticketsHandled,
         resolvedTickets: member.resolvedTickets,
         avgResponseTime: member.ticketsWithResponse > 0 
-          ? Math.round(member.totalResponseTime / member.ticketsWithResponse / (1000 * 60)) // in minutes
+          ? Math.round(member.totalResponseTime / member.ticketsWithResponse / (1000 * 60)) 
           : 0,
-        fastestResponse: member.fastestResponse === Infinity ? 0 : Math.round(member.fastestResponse / 1000), // in seconds
-        slowestResponse: Math.round(member.slowestResponse / 1000), // in seconds
+        fastestResponse: member.fastestResponse === Infinity ? 0 : Math.round(member.fastestResponse / 1000), 
+        slowestResponse: Math.round(member.slowestResponse / 1000), 
         resolutionRate: member.ticketsHandled > 0
           ? Math.round((member.resolvedTickets / member.ticketsHandled) * 100)
           : 0,
@@ -959,7 +953,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           count,
           percentage: Math.round((count / member.ticketsHandled) * 100)
         })),
-        averageResolutionTime: Math.round(member.averageResolutionTime / (1000 * 60)), // in minutes
+        averageResolutionTime: Math.round(member.averageResolutionTime / (1000 * 60)), 
         messagesBySource: member.messagesBySource
       }));
 
@@ -970,7 +964,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Add the panels endpoint after the roles endpoint
   app.get('/api/servers/:serverId/panels', requireAuth, async (req, res) => {
     try {
       const server = await storage.getServer(parseInt(req.params.serverId));
@@ -978,7 +971,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check access
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
@@ -991,7 +983,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Panel creation endpoint
   app.post('/api/servers/:serverId/panels', requireAuth, async (req, res) => {
     try {
       const server = await storage.getServer(parseInt(req.params.serverId));
@@ -999,12 +990,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check access
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
 
-      // Create panel in database first
       const panel = await storage.createPanel({
         ...req.body,
         serverId: server.id,
@@ -1023,7 +1012,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
 
-      // Create and send Discord embed
       await createTicketPanel(
         server.discordId,
         panel.channelId,
@@ -1047,7 +1035,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Add new endpoints for panel management
   app.patch('/api/servers/:serverId/panels/:panelId', requireAuth, async (req, res) => {
     try {
       const server = await storage.getServer(parseInt(req.params.serverId));
@@ -1055,14 +1042,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check access
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
 
       const panel = await storage.updatePanel(parseInt(req.params.panelId), req.body);
 
-      // Recreate panel in Discord if requested
       if (req.query.resend === 'true') {
         await createTicketPanel(
           server.discordId,
@@ -1096,7 +1081,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check access
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
@@ -1119,7 +1103,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Check access
       if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
         return res.status(403).json({ message: 'Not authorized' });
       }
@@ -1153,10 +1136,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Stripe webhook - no auth required
   app.post('/api/stripe/webhook', setupStripeWebhooks());
 
-  // Stripe subscription - requires auth
   app.post('/api/stripe/create-subscription', requireAuth, async (req, res) => {
     try {
       const { priceId, serverId } = req.body;
@@ -1179,7 +1160,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Initialize Discord bot in the background
   setupDiscordBot(httpServer).catch((error) => {
     console.error('Failed to initialize Discord bot:', error);
   });
@@ -1187,10 +1167,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   return httpServer;
 }
 
-
-// Placeholder for the actual validation function.  Needs to be implemented elsewhere.
 async function validateRoleId(guildId: string, roleId: string): Promise<any | null> {
-  //Implementation to validate roleId against Discord API goes here.  Return the role object if valid, null otherwise.
-  return null; // Replace with actual validation logic
+  return null; 
 }
-let client: Client; //Declare client variable
+
+let client: Client;
