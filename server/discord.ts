@@ -294,15 +294,14 @@ async function createTicketChannel(
     const initialMessage = {
       id: 1,
       content: welcomeEmbed.data.description || '',
-      userId: client?.user?.id,
+      userId: client?.user?.id || '',
       username: client?.user?.username || 'Support Bot',
-      avatarUrl: client?.user?.displayAvatarURL(),
-      source: 'discord',
       createdAt: new Date().toISOString(),
       embedData: welcomeEmbed.toJSON(),
     };
 
-    await storage.createTicket({
+    // Create the ticket first
+    const ticket = await storage.createTicket({
       serverId: panel.serverId,
       panelId: panel.id,
       channelId: channel.id,
@@ -313,7 +312,7 @@ async function createTicketChannel(
       messages: [JSON.stringify(initialMessage)],
     });
 
-
+    // Set up message collector after ticket is created
     const collector = channel.createMessageCollector();
     collector.on('collect', async (message) => {
       if (message.author.bot) return;
@@ -345,7 +344,6 @@ async function createTicketChannel(
         await storage.updateTicket(ticket.id, {
           messages: [...parsedMessages, newMessage].map(msg => JSON.stringify(msg)),
         });
-
         console.log('Discord message stored:', {
           ticketId: ticket.id,
           messageContent: message.content,
