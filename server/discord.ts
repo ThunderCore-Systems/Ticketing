@@ -179,6 +179,7 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
       number: ticketNumber,
       status: 'open',
       claimedBy: null,
+      messages: [], // Initialize empty messages array
     });
 
     // Create welcome embed
@@ -191,6 +192,53 @@ async function createTicketChannel(interaction: ButtonInteraction, panel: any) {
       )
       .setColor(0x00ff00)
       .setTimestamp();
+
+    // Create initial message object for the ticket
+    const initialMessage = {
+      id: 1,
+      content: welcomeEmbed.data.description || '',
+      userId: client?.user?.id,
+      username: client?.user?.username || 'Support Bot',
+      avatarUrl: client?.user?.displayAvatarURL(),
+      source: 'discord',
+      createdAt: new Date().toISOString(),
+      embedData: welcomeEmbed.toJSON(),
+    };
+
+    // Update ticket with initial message
+    await storage.updateTicket(ticket.id, {
+      messages: [JSON.stringify(initialMessage)],
+    });
+
+    // Set up message collector for the channel
+    const collector = channel.createMessageCollector();
+    collector.on('collect', async (message) => {
+      if (message.author.bot) return; // Skip bot messages
+
+      const existingTicket = await storage.getTicket(ticket.id);
+      if (!existingTicket) return;
+
+      const existingMessages = existingTicket.messages || [];
+      const newMessage = {
+        id: existingMessages.length + 1,
+        content: message.content,
+        userId: message.author.id,
+        username: message.member?.displayName || message.author.username,
+        avatarUrl: message.author.displayAvatarURL(),
+        source: 'discord',
+        createdAt: message.createdAt.toISOString(),
+        attachments: message.attachments.map(att => ({
+          url: att.url,
+          name: att.name,
+          contentType: att.contentType,
+        })),
+      };
+
+      // Update ticket with new message
+      await storage.updateTicket(ticket.id, {
+        messages: [...existingMessages, JSON.stringify(newMessage)],
+      });
+    });
 
     // Create ticket management buttons
     const buttons = new ActionRowBuilder<ButtonBuilder>()
@@ -477,6 +525,7 @@ async function handleTicketCommand(interaction: ChatInputCommandInteraction) {
       channelId: null,
       panelId: null,
       number: 0,
+      messages: []
     });
 
     // Create Discord channel for ticket
@@ -590,16 +639,27 @@ async function saveTranscript(interaction: ButtonInteraction, ticketId: number) 
       return;
     }
 
-    const messages = await storage.getMessagesByTicketId(ticketId);
-    const channel = interaction.channel as TextChannel;
+    // Process messages for transcript
+    const messages = ticket.messages ? ticket.messages.map(msg =>
+      typeof msg === 'string' ? JSON.parse(msg) : msg
+    ) : [];
 
-    // Generate transcript
     let transcript = `Ticket Transcript - #${ticket.number}\n`;
     transcript += `Created: ${new Date(ticket.createdAt || Date.now()).toLocaleString()}\n`;
     transcript += `Status: ${ticket.status}\n\n`;
 
+    // Format messages with source information
     messages.forEach(msg => {
-      transcript += `[${new Date(msg.createdAt || Date.now()).toLocaleString()}] ${msg.userId}: ${msg.content}\n`;
+      const timestamp = new Date(msg.createdAt).toLocaleString();
+      const source = msg.source === 'discord' ? '[Discord]' : '[Dashboard]';
+      transcript += `[${timestamp}] ${source} ${msg.username}: ${msg.content}\n`;
+
+      // Add attachment information
+      if (msg.attachments?.length > 0) {
+        msg.attachments.forEach((att: any) => {
+          transcript += `  📎 Attachment: ${att.name} - ${att.url}\n`;
+        });
+      }
     });
 
     const transcriptBuffer = Buffer.from(transcript, 'utf-8');

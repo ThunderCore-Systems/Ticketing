@@ -187,10 +187,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get('/api/tickets/:ticketId/messages', requireAuth, async (req, res) => {
-    const messages = await storage.getMessagesByTicketId(parseInt(req.params.ticketId));
-    res.json(messages);
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const ticket = await storage.getTicket(ticketId);
+
+      if (!ticket) {
+        return res.status(404).json({ message: 'Ticket not found' });
+      }
+
+      // Parse and format messages
+      const messages = (ticket.messages || []).map(msg => {
+        const message = typeof msg === 'string' ? JSON.parse(msg) : msg;
+        return {
+          ...message,
+          isDiscord: message.source === 'discord',
+          isSupport: ticket.claimedBy === message.userId,
+        };
+      });
+
+      res.json(messages);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+      res.status(500).json({ message: 'Failed to fetch messages' });
+    }
   });
 
+  // Update message schema for better Discord integration
+  const messageSchema = z.object({
+    content: z.string().min(1, "Message content is required"),
+    source: z.enum(["discord", "dashboard"]).default("dashboard"),
+    username: z.string().optional(),
+    avatarUrl: z.string().optional(),
+  });
+
+  // Update existing message endpoint to handle source
   app.post('/api/tickets/:ticketId/messages', requireAuth, async (req, res) => {
     try {
       const ticketId = parseInt(req.params.ticketId);
@@ -205,20 +235,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: 'Server not found' });
       }
 
-      // Create message schema for validation
-      const messageSchema = z.object({
-        content: z.string().min(1, "Message content is required"),
-      });
-
-      const { content } = messageSchema.parse(req.body);
+      const { content, source } = messageSchema.parse(req.body);
 
       // Get existing messages
       const existingMessages = ticket.messages || [];
-      const newMessage: TicketMessage = {
+      const newMessage = {
         id: existingMessages.length + 1,
         content,
         userId: (req.user as any).id,
         username: (req.user as any).username,
+        avatarUrl: (req.user as any).avatarUrl,
+        source: source || "dashboard",
         createdAt: new Date().toISOString()
       };
 
@@ -503,6 +530,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
               categories: new Map(),
               averageMessagesPerTicket: 0,
               averageResolutionTime: 0,
+              messagesBySource: {
+                discord: 0,
+                dashboard: 0
+              }
             });
           }
 
@@ -518,15 +549,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
 
-          // Process messages
+          // Process messages, including both Discord and dashboard messages
           if (ticket.messages && Array.isArray(ticket.messages)) {
             const messages = ticket.messages.map(msg => 
               typeof msg === 'string' ? JSON.parse(msg) : msg
             );
 
-            // Count staff messages
+            // Count staff messages from both sources
             const staffMessages = messages.filter(m => m.userId === ticket.claimedBy);
             member.totalMessages += staffMessages.length;
+
+            // Track messages by source
+            staffMessages.forEach(msg => {
+              member.messagesBySource[msg.source]++;
+            });
 
             // Process first response time
             const userFirstMessage = messages[0];
@@ -542,7 +578,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               member.slowestResponse = Math.max(member.slowestResponse, responseTime);
             }
 
-            // Update activity patterns
+            // Update activity patterns and user info
             messages.forEach(msg => {
               if (msg.userId === ticket.claimedBy) {
                 const msgDate = new Date(msg.createdAt);
@@ -553,7 +589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 if (!member.lastActive || msgDate > new Date(member.lastActive)) {
                   member.lastActive = msgDate;
                   member.name = msg.username;
-                  member.avatar = msg.avatar;
+                  member.avatar = msg.avatarUrl || msg.avatar;
                 }
               }
             });
@@ -570,7 +606,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Calculate final stats for each member
       const stats = Array.from(supportMembers.values()).map(member => ({
         id: member.id,
-        name: member.name || member.id,
+        name: member.name || 'Unknown User',
         avatar: member.avatar,
         roleType: server.ticketManagerRoleId === member.id ? 'manager' : 'support',
         ticketsHandled: member.ticketsHandled,
@@ -595,15 +631,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           percentage: Math.round((count / member.ticketsHandled) * 100)
         })),
         averageResolutionTime: Math.round(member.averageResolutionTime / (1000 * 60)), // in minutes
+        messagesBySource: member.messagesBySource
       }));
 
       res.json(stats);
     } catch (error) {
       console.error('Error fetching support stats:', error);
-      res.status(500).json({ 
-        message: 'Failed to fetch support team statistics',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
+      res.status(500).json({ message: 'Failed to fetch support team statistics' });
     }
   });
 
@@ -823,6 +857,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   return httpServer;
 }
+
 
 // Placeholder for the actual validation function.  Needs to be implemented elsewhere.
 async function validateRoleId(guildId: string, roleId: string): Promise<any | null> {
