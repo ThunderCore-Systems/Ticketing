@@ -6,17 +6,21 @@ if (!process.env.STRIPE_SECRET_KEY) {
 }
 
 if (!process.env.APP_URL) {
-  throw new Error("APP_URL is required for Stripe redirects. It should be your Replit app URL.");
+  throw new Error(
+    "APP_URL is required for Stripe redirects. It should be your Replit app URL.",
+  );
 }
 
 // Ensure APP_URL doesn't have any trailing slashes and is a valid URL
-const APP_URL = process.env.APP_URL.trim().replace(/\/$/, '');
+const APP_URL = process.env.APP_URL.trim().replace(/\/$/, "");
 
 // Validate APP_URL format
 try {
   new URL(APP_URL);
 } catch (e) {
-  throw new Error(`Invalid APP_URL: ${APP_URL}. It should be a complete URL like https://your-app.username.repl.co`);
+  throw new Error(
+    `Invalid APP_URL: ${APP_URL}. It should be a complete URL like https://your-app.username.repl.co`,
+  );
 }
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -24,8 +28,8 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 });
 
 export async function createSubscription(priceId: string, serverId?: number) {
-  console.log('Creating subscription:', { 
-    priceId, 
+  console.log("Creating subscription:", {
+    priceId,
     serverId,
   });
 
@@ -49,14 +53,14 @@ export async function createSubscription(priceId: string, serverId?: number) {
       cancel_url: `${APP_URL}/billing?canceled=true`,
     });
 
-    console.log('Checkout session created:', { 
+    console.log("Checkout session created:", {
       sessionId: subscription.id,
-      url: subscription.url 
+      url: subscription.url,
     });
 
     return subscription;
   } catch (error) {
-    console.error('Subscription creation error:', error);
+    console.error("Subscription creation error:", error);
     throw error;
   }
 }
@@ -74,30 +78,32 @@ export function setupStripeWebhooks() {
       event = stripe.webhooks.constructEvent(
         req.body,
         sig,
-        process.env.STRIPE_WEBHOOK_SECRET
+        process.env.STRIPE_WEBHOOK_SECRET,
       );
     } catch (err) {
-      console.error('Webhook signature verification failed:', err);
+      console.error("Webhook signature verification failed:", err);
       res.status(400).send(`Webhook Error: ${(err as Error).message}`);
       return;
     }
 
     try {
-      console.log('Processing webhook event:', event.type);
+      console.log("Processing webhook event:", event.type);
 
       switch (event.type) {
         case "checkout.session.completed":
           const session = event.data.object as Stripe.Checkout.Session;
-          console.log('Checkout completed:', {
+          console.log("Checkout completed:", {
             sessionId: session.id,
             serverId: session.metadata?.serverId,
-            subscriptionId: session.subscription
+            subscriptionId: session.subscription,
           });
 
           // Get the user from the server if specified
           let userId: number | undefined;
           if (session.metadata?.serverId) {
-            const server = await storage.getServer(parseInt(session.metadata.serverId));
+            const server = await storage.getServer(
+              parseInt(session.metadata.serverId),
+            );
             if (server) {
               userId = server.ownerId;
             }
@@ -108,7 +114,7 @@ export function setupStripeWebhooks() {
             const user = await storage.getUser(userId);
             if (user) {
               await storage.updateUser(userId, {
-                serverTokens: 3,
+                serverTokens: 1,
               });
             }
 
@@ -126,7 +132,9 @@ export function setupStripeWebhooks() {
         case "customer.subscription.deleted":
           const deletedSubscription = event.data.object as Stripe.Subscription;
           // Find server by subscription ID and remove claims
-          const serverToUnsubscribe = await storage.getServerBySubscriptionId(deletedSubscription.id);
+          const serverToUnsubscribe = await storage.getServerBySubscriptionId(
+            deletedSubscription.id,
+          );
           if (serverToUnsubscribe && serverToUnsubscribe.claimedByUserId) {
             // Remove server claim and update status
             await storage.updateServer(serverToUnsubscribe.id, {
@@ -135,7 +143,9 @@ export function setupStripeWebhooks() {
             });
 
             // Update user's available tokens
-            const user = await storage.getUser(serverToUnsubscribe.claimedByUserId);
+            const user = await storage.getUser(
+              serverToUnsubscribe.claimedByUserId,
+            );
             if (user) {
               await storage.updateUser(user.id, {
                 serverTokens: Math.max(0, (user.serverTokens || 0) - 1),
@@ -147,8 +157,8 @@ export function setupStripeWebhooks() {
 
       res.json({ received: true });
     } catch (error) {
-      console.error('Error processing webhook:', error);
-      res.status(500).send('Webhook processing failed');
+      console.error("Error processing webhook:", error);
+      res.status(500).send("Webhook processing failed");
     }
   };
 }
