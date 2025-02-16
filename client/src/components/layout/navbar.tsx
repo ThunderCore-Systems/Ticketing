@@ -11,9 +11,9 @@ import type { User } from "@shared/schema";
 
 export default function Navbar() {
   const [location] = useLocation();
-  const { data: user } = useQuery<User>({ 
+  const { data: user } = useQuery<User>({
     queryKey: ["/api/auth/user"],
-    retry: false
+    retry: false,
   });
 
   const isActive = (path: string) => location === path;
@@ -27,9 +27,9 @@ export default function Navbar() {
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           <div className="flex items-center">
-            <a 
-              href="https://discord.gg/5dZke6WKHu" 
-              target="_blank" 
+            <a
+              href="https://discord.gg/5dZke6WKHu"
+              target="_blank"
               rel="noopener noreferrer"
               className="text-xl font-bold hover:text-primary transition-colors"
             >
@@ -37,11 +37,10 @@ export default function Navbar() {
             </a>
             <div className="ml-10 flex items-center space-x-4">
               <Link href="/dashboard">
-                <Button
-                  variant={isActive("/dashboard") ? "default" : "ghost"}
-                >
+                <Button variant={isActive("/dashboard") ? "default" : "ghost"}>
                   Dashboard
                 </Button>
+              </Link>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -70,7 +69,8 @@ export default function Navbar() {
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Need more servers? Create a support ticket to request additional access.
+                    Need more servers? Create a support ticket to request
+                    additional access.
                   </div>
                   {user.isAdmin && (
                     <div className="pt-2 border-t">
