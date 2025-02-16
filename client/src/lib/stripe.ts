@@ -17,4 +17,4 @@ export async function createSubscription(priceId: string, serverId?: number) {
 }
 
 // Constants
-export const SUBSCRIPTION_PRICE_ID = "price_1QsY8yP6DDFtG7MvtzQmVgyt";
+export const SUBSCRIPTION_PRICE_ID = "price_1QtEdzP6DDFtG7MvUBtGIPIG";
