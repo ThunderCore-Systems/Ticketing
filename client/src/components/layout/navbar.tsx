@@ -42,14 +42,6 @@ export default function Navbar() {
                 >
                   Dashboard
                 </Button>
-              </Link>
-              <Link href="/billing">
-                <Button
-                  variant={isActive("/billing") ? "default" : "ghost"}
-                >
-                  Billing
-                </Button>
-              </Link>
             </div>
           </div>
           <div className="flex items-center gap-4">
