@@ -13,6 +13,7 @@ export const users = pgTable("users", {
   serverTokens: integer("server_tokens").default(0),
   ISADMIN: boolean("is_admin").default(false),
   isBanned: boolean("is_banned").default(false),
+  isServerManager: boolean("is_server_manager").default(false), // New field for server management privileges
 });
 
 export const servers = pgTable("servers", {

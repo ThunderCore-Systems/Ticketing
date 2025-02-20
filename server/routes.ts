@@ -39,6 +39,16 @@ function requireAdmin(req: any, res: any, next: any) {
   next();
 }
 
+function requireServerManagerOrAdmin(req: any, res: any, next: any) {
+  if (!req.user) {
+    return res.status(401).json({ message: "Not authenticated" });
+  }
+  if (!req.user.ISADMIN && !req.user.isServerManager) {
+    return res.status(403).json({ message: "Server management access required" });
+  }
+  next();
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
@@ -53,7 +63,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/admin/servers", requireAuth, requireAdmin, async (req, res) => {
+  app.get("/api/admin/servers", requireAuth, requireServerManagerOrAdmin, async (req, res) => {
     try {
       const servers = await storage.getAllServers();
       res.json(servers);
@@ -173,7 +183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/admin/servers/:serverId/sync', requireAuth, requireAdmin, async (req, res) => {
+  app.post('/api/admin/servers/:serverId/sync', requireAuth, requireServerManagerOrAdmin, async (req, res) => {
     try {
       const serverId = parseInt(req.params.serverId);
       const server = await storage.getServer(serverId);

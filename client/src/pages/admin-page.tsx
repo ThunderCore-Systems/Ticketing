@@ -1,45 +1,17 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import {
-  Users,
-  Server,
-  Coins,
-  Shield,
-  Edit,
-  RefreshCw,
-  Trash2,
-  Plus,
-  Ban,
-} from "lucide-react";
+import { Users, Server, Coins, Shield, Edit, RefreshCw, Trash2, Plus, Ban, UserCog } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 
 export default function AdminPage() {
   const { toast } = useToast();
@@ -103,6 +75,23 @@ export default function AdminPage() {
     },
   });
 
+  // Toggle server manager status
+  const toggleServerManager = useMutation({
+    mutationFn: async ({ userId, isServerManager }: { userId: number; isServerManager: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${userId}`, {
+        isServerManager,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({
+        title: "Server Manager Status Updated",
+        description: "User's server management privileges have been updated.",
+      });
+    },
+  });
+
   // Sync server mutation
   const syncServer = useMutation({
     mutationFn: async (serverId: number) => {
@@ -161,7 +150,7 @@ export default function AdminPage() {
             <CardHeader>
               <CardTitle>User Management</CardTitle>
               <CardDescription>
-                Manage user accounts, tokens, and permissions
+                Manage user accounts, roles, and permissions
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -173,6 +162,7 @@ export default function AdminPage() {
                     <TableHead>Server Tokens</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Role</TableHead>
+                    <TableHead>Server Manager</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -209,6 +199,20 @@ export default function AdminPage() {
                         </Select>
                       </TableCell>
                       <TableCell>
+                        <div className="flex items-center">
+                          <Switch
+                            checked={user.isServerManager}
+                            onCheckedChange={(checked) =>
+                              toggleServerManager.mutate({
+                                userId: user.id,
+                                isServerManager: checked,
+                              })
+                            }
+                          />
+                          <UserCog className="h-4 w-4 ml-2" />
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         <div className="flex items-center gap-2">
                           <Button
                             variant="outline"
@@ -219,18 +223,6 @@ export default function AdminPage() {
                           >
                             <Plus className="h-4 w-4 mr-1" />
                             Add Token
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              updateUser.mutate({
-                                userId: user.id,
-                                data: { /* user update data */ },
-                              })
-                            }
-                          >
-                            <Edit className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="destructive"
