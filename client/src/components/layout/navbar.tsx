@@ -16,6 +16,8 @@ export default function Navbar() {
     retry: false,
   });
 
+  const isAdmin = user?.isAdmin; //Added this line as per changes provided
+
   const isActive = (path: string) => location === path;
 
   if (!user) {
@@ -41,6 +43,14 @@ export default function Navbar() {
                   Dashboard
                 </Button>
               </Link>
+              <Link href="/servers">
+                <Button variant="ghost">Servers</Button>
+              </Link>
+              {isAdmin && (
+                <Link href="/admin">
+                  <Button variant="ghost">Admin</Button>
+                </Link>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-4">
