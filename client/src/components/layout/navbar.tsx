@@ -46,9 +46,9 @@ export default function Navbar() {
               <Link href="/servers">
                 <Button variant="ghost">Servers</Button>
               </Link>
-              {isAdmin && (
+              {isAdmin === true && (
                 <Link href="/admin">
-                  <Button variant="ghost">Admin</Button>
+                  <Button variant={isActive("/admin") ? "default" : "ghost"}>Admin</Button>
                 </Link>
               )}
             </div>
@@ -82,7 +82,7 @@ export default function Navbar() {
                     Need more servers? Create a support ticket to request
                     additional access.
                   </div>
-                  {user.isAdmin && (
+                  {user.ISADMIN && (
                     <div className="pt-2 border-t">
                       <Badge variant="destructive">Admin</Badge>
                     </div>

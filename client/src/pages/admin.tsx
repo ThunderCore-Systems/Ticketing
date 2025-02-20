@@ -8,6 +8,13 @@ import { queryClient } from "@/lib/queryClient";
 import type { Server, User } from "@shared/schema";
 
 export default function AdminDashboard() {
+  const { data: user } = useQuery<User>({
+    queryKey: ["/api/auth/user"],
+  });
+
+  if (!user?.ISADMIN) {
+    return <div>Not authorized</div>;
+  }
   const { toast } = useToast();
   const { data: allServers } = useQuery<Server[]>({
     queryKey: ["/api/admin/servers"],
