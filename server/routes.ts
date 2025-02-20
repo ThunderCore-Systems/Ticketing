@@ -39,110 +39,110 @@ function requireAdmin(req: any, res: any, next: any) {
   next();
 }
 
-// Admin routes
-app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const users = await storage.getAllUsers();
-    res.json(users);
-  } catch (error) {
-    console.error("Error fetching users:", error);
-    res.status(500).json({ message: "Failed to fetch users" });
-  }
-});
-
-app.get("/api/admin/servers", requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const servers = await storage.getAllServers();
-    res.json(servers);
-  } catch (error) {
-    console.error("Error fetching servers:", error);
-    res.status(500).json({ message: "Failed to fetch servers" });
-  }
-});
-
-app.post(
-  "/api/admin/users/:userId/tokens",
-  requireAuth,
-  requireAdmin,
-  async (req, res) => {
-    try {
-      const userId = parseInt(req.params.userId);
-      const { tokens } = req.body;
-
-      const user = await storage.getUser(userId);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const updatedUser = await storage.updateUser(userId, {
-        serverTokens: (user.serverTokens || 0) + tokens,
-      });
-
-      res.json(updatedUser);
-    } catch (error) {
-      console.error("Error adding tokens:", error);
-      res.status(500).json({ message: "Failed to add tokens" });
-    }
-  },
-);
-
-app.post(
-  "/api/admin/users/:userId/servers",
-  requireAuth,
-  requireAdmin,
-  async (req, res) => {
-    try {
-      const userId = parseInt(req.params.userId);
-      const { serverId } = req.body;
-
-      const user = await storage.getUser(userId);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      const server = await storage.getServer(serverId);
-      if (!server) {
-        return res.status(404).json({ message: "Server not found" });
-      }
-
-      await storage.updateServer(serverId, {
-        claimedByUserId: userId,
-        subscriptionStatus: "active",
-      });
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Error adding server:", error);
-      res.status(500).json({ message: "Failed to add server" });
-    }
-  },
-);
-
-async function registerUserServers(userId: number, guilds: DiscordGuild[]) {
-  for (const guild of guilds) {
-    if (
-      guild.owner ||
-      (BigInt(guild.permissions) & BigInt(0x8)) === BigInt(0x8)
-    ) {
-      const existingServer = await storage.getServerByDiscordId(guild.id);
-      if (!existingServer) {
-        await storage.createServer({
-          discordId: guild.id,
-          name: guild.name,
-          icon: guild.icon
-            ? `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png`
-            : null,
-          ownerId: userId,
-          subscriptionId: null,
-          subscriptionStatus: null,
-        });
-      }
-    }
-  }
-}
-
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+
+  // Admin routes
+  app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  app.get("/api/admin/servers", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const servers = await storage.getAllServers();
+      res.json(servers);
+    } catch (error) {
+      console.error("Error fetching servers:", error);
+      res.status(500).json({ message: "Failed to fetch servers" });
+    }
+  });
+
+  app.post(
+    "/api/admin/users/:userId/tokens",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const userId = parseInt(req.params.userId);
+        const { tokens } = req.body;
+
+        const user = await storage.getUser(userId);
+        if (!user) {
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        const updatedUser = await storage.updateUser(userId, {
+          serverTokens: (user.serverTokens || 0) + tokens,
+        });
+
+        res.json(updatedUser);
+      } catch (error) {
+        console.error("Error adding tokens:", error);
+        res.status(500).json({ message: "Failed to add tokens" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/users/:userId/servers",
+    requireAuth,
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const userId = parseInt(req.params.userId);
+        const { serverId } = req.body;
+
+        const user = await storage.getUser(userId);
+        if (!user) {
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        const server = await storage.getServer(serverId);
+        if (!server) {
+          return res.status(404).json({ message: "Server not found" });
+        }
+
+        await storage.updateServer(serverId, {
+          claimedByUserId: userId,
+          subscriptionStatus: "active",
+        });
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Error adding server:", error);
+        res.status(500).json({ message: "Failed to add server" });
+      }
+    },
+  );
+
+  async function registerUserServers(userId: number, guilds: DiscordGuild[]) {
+    for (const guild of guilds) {
+      if (
+        guild.owner ||
+        (BigInt(guild.permissions) & BigInt(0x8)) === BigInt(0x8)
+      ) {
+        const existingServer = await storage.getServerByDiscordId(guild.id);
+        if (!existingServer) {
+          await storage.createServer({
+            discordId: guild.id,
+            name: guild.name,
+            icon: guild.icon
+              ? `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png`
+              : null,
+            ownerId: userId,
+            subscriptionId: null,
+            subscriptionStatus: null,
+          });
+        }
+      }
+    }
+  }
 
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || "dev-secret",
