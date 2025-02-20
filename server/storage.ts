@@ -1,5 +1,5 @@
 import { 
-  users, servers, tickets, panels,
+  users, servers, tickets, panels, panelGroups,
   type User, type InsertUser, 
   type Server, type InsertServer,
   type Ticket, type InsertTicket,
@@ -15,6 +15,7 @@ export interface IStorage {
   getUserByDiscordId(discordId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, user: Partial<User>): Promise<User>;
+  getAllUsers(): Promise<User[]>;
 
   // Servers
   getServer(id: number): Promise<Server | undefined>;
@@ -23,6 +24,7 @@ export interface IStorage {
   createServer(server: InsertServer): Promise<Server>;
   updateServer(id: number, server: Partial<Server>): Promise<Server>;
   getServerBySubscriptionId(subscriptionId: string): Promise<Server | undefined>;
+  getAllServers(): Promise<Server[]>;
 
   // Tickets
   getTicket(id: number): Promise<Ticket | undefined>;
@@ -71,6 +73,10 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getAllUsers(): Promise<User[]> {
+    return db.select().from(users);
+  }
+
   // Servers
   async getServer(id: number): Promise<Server | undefined> {
     const [server] = await db.select().from(servers).where(eq(servers.id, id));
@@ -103,6 +109,10 @@ export class DatabaseStorage implements IStorage {
   async getServerBySubscriptionId(subscriptionId: string): Promise<Server | undefined> {
     const [server] = await db.select().from(servers).where(eq(servers.subscriptionId, subscriptionId));
     return server;
+  }
+
+  async getAllServers(): Promise<Server[]> {
+    return db.select().from(servers);
   }
 
   // Tickets

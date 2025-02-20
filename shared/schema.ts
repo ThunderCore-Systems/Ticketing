@@ -12,6 +12,7 @@ export const users = pgTable("users", {
   refreshToken: text("refresh_token"),
   serverTokens: integer("server_tokens").default(0),
   ISADMIN: boolean("is_admin").default(false),
+  isBanned: boolean("is_banned").default(false),
 });
 
 export const servers = pgTable("servers", {
@@ -30,6 +31,7 @@ export const servers = pgTable("servers", {
   activityLogs: boolean("activity_logs").default(false),
   enableStats: boolean("enable_stats").default(false),
   enableTeamStats: boolean("enable_team_stats").default(false),
+  lastSynced: timestamp("last_synced"),
 });
 
 export const panels = pgTable("panels", {

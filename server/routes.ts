@@ -121,6 +121,88 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  app.patch('/api/admin/users/:userId', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const updatedUser = await storage.updateUser(userId, req.body);
+      res.json(updatedUser);
+    } catch (error) {
+      console.error('Error updating user:', error);
+      res.status(500).json({ message: 'Failed to update user' });
+    }
+  });
+
+  app.post('/api/admin/users/:userId/tokens', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const { amount } = req.body;
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const updatedUser = await storage.updateUser(userId, {
+        serverTokens: (user.serverTokens || 0) + amount
+      });
+
+      res.json(updatedUser);
+    } catch (error) {
+      console.error('Error adding tokens:', error);
+      res.status(500).json({ message: 'Failed to add tokens' });
+    }
+  });
+
+  app.post('/api/admin/users/:userId/ban', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const userId = parseInt(req.params.userId);
+      const user = await storage.getUser(userId);
+
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const updatedUser = await storage.updateUser(userId, {
+        isBanned: !user.isBanned
+      });
+
+      res.json(updatedUser);
+    } catch (error) {
+      console.error('Error updating user ban status:', error);
+      res.status(500).json({ message: 'Failed to update user ban status' });
+    }
+  });
+
+  app.post('/api/admin/servers/:serverId/sync', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const serverId = parseInt(req.params.serverId);
+      const server = await storage.getServer(serverId);
+
+      if (!server) {
+        return res.status(404).json({ message: 'Server not found' });
+      }
+
+      // Re-fetch Discord server details and update
+      const channels = await getServerChannels(server.discordId);
+      const roles = await getServerRoles(server.discordId);
+
+      // Update server with latest info
+      const updatedServer = await storage.updateServer(serverId, {
+        lastSynced: new Date().toISOString()
+      });
+
+      res.json({ 
+        server: updatedServer,
+        channels,
+        roles: roles.filter(role => role.name !== '@everyone')
+      });
+    } catch (error) {
+      console.error('Error syncing server:', error);
+      res.status(500).json({ message: 'Failed to sync server' });
+    }
+  });
+
+
   async function registerUserServers(userId: number, guilds: DiscordGuild[]) {
     for (const guild of guilds) {
       if (
