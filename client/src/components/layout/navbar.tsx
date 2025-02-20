@@ -16,7 +16,7 @@ export default function Navbar() {
     retry: false,
   });
 
-  const isAdmin = user?.isAdmin; //Added this line as per changes provided
+  const isAdmin = user?.ISADMIN; //Added this line as per changes provided
 
   const isActive = (path: string) => location === path;
 

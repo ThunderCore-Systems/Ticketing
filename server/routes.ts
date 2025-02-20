@@ -33,7 +33,7 @@ function requireAuth(req: any, res: any, next: any) {
 }
 
 function requireAdmin(req: any, res: any, next: any) {
-  if (!req.user?.isAdmin) {
+  if (!req.user?.ISADMIN) {
     return res.status(403).json({ message: "Admin access required" });
   }
   next();

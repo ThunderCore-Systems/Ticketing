@@ -11,7 +11,7 @@ export const users = pgTable("users", {
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   serverTokens: integer("server_tokens").default(0),
-  isAdmin: boolean("is_admin").default(false),
+  ISADMIN: boolean("is_admin").default(false),
 });
 
 export const servers = pgTable("servers", {
