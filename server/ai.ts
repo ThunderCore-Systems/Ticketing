@@ -3,6 +3,8 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { knowledgeBase } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { EmbedBuilder } from "discord.js";
+import { sendWebhookMessage } from "./discord";
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -11,6 +13,7 @@ interface AIResponse {
   content: string;
   confidence: number;
   usedKnowledgeBase: boolean;
+  needsHumanSupport: boolean;
 }
 
 // Function to get knowledge base entries for a server
@@ -39,6 +42,34 @@ async function saveToKnowledgeBase(serverId: number, question: string, answer: s
   }
 }
 
+async function sendDiscordResponse(
+  channelId: string,
+  content: string,
+  confidence: number,
+  needsHumanSupport: boolean,
+  supportRoleId?: string
+): Promise<void> {
+  const embed = new EmbedBuilder()
+    .setColor(needsHumanSupport ? 0xffcc00 : 0x00ff00)
+    .setDescription(content)
+    .setFooter({ text: `AI Confidence: ${Math.round(confidence * 100)}%` })
+    .setTimestamp();
+
+  const message = needsHumanSupport && supportRoleId
+    ? `<@&${supportRoleId}> Support team needed!\n\n${content}`
+    : content;
+
+  await sendWebhookMessage(
+    channelId,
+    message,
+    "AI Assistant",
+    false,
+    null,
+    null,
+    [embed]
+  );
+}
+
 export async function handleNewTicket(
   ticketId: number,
   serverId: number,
@@ -63,7 +94,7 @@ export async function handleNewTicket(
       messages: [
         {
           role: "system",
-          content: `You are a helpful support assistant. Use the following knowledge base to help answer user queries:\n\n${knowledgeContext}\n\nRespond naturally and professionally. If you cannot provide a confident answer, acknowledge the query and let them know a human support agent will assist them shortly. Format your response as JSON with: { "response": "your response text", "confidence": 0-1 score }`
+          content: `You are a helpful support assistant. Use the following knowledge base to help answer user queries:\n\n${knowledgeContext}\n\nRespond naturally and professionally. If you cannot provide a confident answer (confidence < 0.7), acknowledge the query and explain that you'll involve the support team. Format your response as JSON with: { "response": "your response text", "confidence": 0-1 score, "needsHumanSupport": boolean }`
         },
         {
           role: "user",
@@ -74,6 +105,7 @@ export async function handleNewTicket(
     });
 
     const result = JSON.parse(response.choices[0].message.content || '{}');
+    const needsHumanSupport = result.confidence < 0.7 || result.needsHumanSupport;
 
     // If the response is confident enough, save it to the knowledge base
     if (result.confidence > 0.8) {
@@ -82,10 +114,23 @@ export async function handleNewTicket(
 
     console.log(`[AI] Generated response for ticket ${ticketId} with confidence ${result.confidence}`);
 
+    // Send response through webhook if channel exists
+    if (ticket.channelId) {
+      const server = await storage.getServer(serverId);
+      await sendDiscordResponse(
+        ticket.channelId,
+        result.response,
+        result.confidence,
+        needsHumanSupport,
+        server?.supportRoleId
+      );
+    }
+
     return {
       content: result.response || "I'll have a support agent assist you shortly.",
       confidence: result.confidence || 0,
-      usedKnowledgeBase: knowledgeContext.length > 0
+      usedKnowledgeBase: knowledgeContext.length > 0,
+      needsHumanSupport
     };
 
   } catch (error) {
@@ -93,7 +138,8 @@ export async function handleNewTicket(
     return {
       content: "I apologize, but I'm having trouble processing your request. A support agent will assist you shortly.",
       confidence: 0,
-      usedKnowledgeBase: false
+      usedKnowledgeBase: false,
+      needsHumanSupport: true
     };
   }
 }
@@ -130,7 +176,7 @@ export async function handleTicketResponse(
       messages: [
         {
           role: "system",
-          content: `You are a helpful support assistant. Use this knowledge base:\n\n${knowledgeContext}\n\nRespond naturally and professionally. If you cannot help, let them know a human agent will assist shortly. Format your response as JSON with: { "response": "your response text", "confidence": 0-1 score }`
+          content: `You are a helpful support assistant. Use this knowledge base:\n\n${knowledgeContext}\n\nRespond naturally and professionally. If you cannot provide a confident answer (confidence < 0.7), acknowledge the query and explain that you'll involve the support team. Format your response as JSON with: { "response": "your response text", "confidence": 0-1 score, "needsHumanSupport": boolean }`
         },
         {
           role: "user",
@@ -141,6 +187,7 @@ export async function handleTicketResponse(
     });
 
     const result = JSON.parse(response.choices[0].message.content || '{}');
+    const needsHumanSupport = result.confidence < 0.7 || result.needsHumanSupport;
 
     // If the response is confident enough, save it to the knowledge base
     if (result.confidence > 0.8) {
@@ -149,10 +196,24 @@ export async function handleTicketResponse(
 
     console.log(`[AI] Generated response with confidence ${result.confidence}`);
 
+    // Get ticket and server info for webhook
+    const ticket = await storage.getTicket(ticketId);
+    if (ticket?.channelId) {
+      const server = await storage.getServer(serverId);
+      await sendDiscordResponse(
+        ticket.channelId,
+        result.response,
+        result.confidence,
+        needsHumanSupport,
+        server?.supportRoleId
+      );
+    }
+
     return {
       content: result.response || "I'll have a support agent assist you shortly.",
       confidence: result.confidence || 0,
-      usedKnowledgeBase: knowledgeContext.length > 0
+      usedKnowledgeBase: knowledgeContext.length > 0,
+      needsHumanSupport
     };
 
   } catch (error) {
@@ -160,7 +221,8 @@ export async function handleTicketResponse(
     return {
       content: "I apologize, but I'm having trouble processing your request. A support agent will assist you shortly.",
       confidence: 0,
-      usedKnowledgeBase: false
+      usedKnowledgeBase: false,
+      needsHumanSupport: true
     };
   }
 }
