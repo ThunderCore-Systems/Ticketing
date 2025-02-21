@@ -21,6 +21,8 @@ import type { DiscordGuild, TicketMessage } from "./types";
 import { TextChannel, EmbedBuilder } from "discord.js";
 import knowledgeRoutes from "./routes/knowledge";
 import {db} from './db'; // Added import for db
+import { handleNewTicket, handleTicketResponse } from "./ai"; // Added import for AI functions
+
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
@@ -420,25 +422,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
           : null,
       });
 
+      const server = await storage.getServer(parseInt(req.params.serverId));
+      if (!server) {
+        return res.status(404).json({ message: "Server not found" });
+      }
+
       // Get the panel to include form responses in the initial message
       const panel = await storage.getPanel(ticket.panelId);
+      let initialMessage = "";
 
       if (panel && ticket.formResponses) {
         const formattedResponses = Object.entries(
           JSON.parse(ticket.formResponses),
         )
           .map(([fieldId, value]) => {
-            const field = panel.formFields.find((f: any) => f.id === fieldId);
+            const field = panel.formFields?.find((f: any) => f.id === fieldId);
             return field ? `**${field.label}**: ${value}` : null;
           })
           .filter(Boolean)
           .join("\n");
 
         if (formattedResponses) {
+          initialMessage = `**Ticket Information**\n${formattedResponses}`;
           const messages = ticket.messages || [];
-          const initialMessage = {
+          const systemMessage = {
             id: messages.length + 1,
-            content: `**Ticket Information**\n${formattedResponses}`,
+            content: initialMessage,
             userId: (req.user as any).id,
             username: "System",
             source: "system",
@@ -446,8 +455,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
 
           await storage.updateTicket(ticket.id, {
-            messages: [...messages, JSON.stringify(initialMessage)],
+            messages: [...messages, JSON.stringify(systemMessage)],
           });
+        }
+      }
+
+      // Generate AI response if server has AI enabled
+      if (server.aiEnabled) {
+        try {
+          const aiResponse = await handleNewTicket(
+            ticket.id,
+            server.id,
+            initialMessage || req.body.content || ""
+          );
+
+          if (aiResponse) {
+            const messages = ticket.messages || [];
+            const aiMessage = {
+              id: messages.length + 1,
+              content: aiResponse.content,
+              userId: "ai",
+              username: "AI Assistant",
+              source: "ai",
+              createdAt: new Date().toISOString(),
+            };
+
+            await storage.updateTicket(ticket.id, {
+              messages: [...messages, JSON.stringify(aiMessage)],
+            });
+
+            // Send AI response to Discord if webhook exists
+            if (ticket.channelId) {
+              await sendWebhookMessage(
+                ticket.channelId,
+                aiResponse.content,
+                "AI Assistant",
+                false,
+                server.webhookAvatar,
+                null,
+              );
+            }
+          }
+        } catch (aiError) {
+          console.error("Error generating AI response:", aiError);
+          // Don't fail ticket creation if AI fails
         }
       }
 
@@ -534,42 +585,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
         messages: [...existingMessages, JSON.stringify(newMessage)],
       });
 
-      // Auto-save support team responses to knowledge base
-      const isSupportTeam = ticket.claimedBy === (req.user as any).discordId;
-      if (isSupportTeam && server.aiSupportEnabled) {
+      // Generate AI response if enabled and message is from user
+      if (server.aiEnabled && !ticket.claimedBy && source !== "ai") {
         try {
-          // Get the customer's last message for context
-          const messages = existingMessages.map(msg => typeof msg === 'string' ? JSON.parse(msg) : msg);
-          const customerMessages = messages.filter(msg => msg.userId === ticket.userId);
-          const lastCustomerMessage = customerMessages[customerMessages.length - 1];
+          const messageHistory = existingMessages.map(msg => {
+            const parsed = typeof msg === 'string' ? JSON.parse(msg) : msg;
+            return `${parsed.username}: ${parsed.content}`;
+          });
 
-          if (lastCustomerMessage) {
-            await db.insert(knowledgeBase).values({
-              serverId: server.id,
-              keyPhrase: lastCustomerMessage.content.slice(0, 200), // Use first 200 chars of question
-              answer: content,
-              createdAt: new Date(),
-              updatedAt: new Date()
+          const aiResponse = await handleTicketResponse(
+            ticketId,
+            server.id,
+            messageHistory,
+            content
+          );
+
+          if (aiResponse) {
+            const aiMessage = {
+              id: existingMessages.length + 2,
+              content: aiResponse.content,
+              userId: "ai",
+              username: "AI Assistant",
+              source: "ai",
+              createdAt: new Date().toISOString(),
+            };
+
+            await storage.updateTicket(ticketId, {
+              messages: [...existingMessages, JSON.stringify(newMessage), JSON.stringify(aiMessage)],
             });
-          }
-        } catch (kbError) {
-          console.error("Failed to save to knowledge base:", kbError);
-          // Don't fail the message save if knowledge base save fails
-        }
-      }
 
-      if (
-        server.ownerId === (req.user as any).id ||
-        server.claimedByUserId === (req.user as any).id
-      ) {
-        await sendWebhookMessage(
-          ticket.channelId!,
-          content,
-          (req.user as any).username,
-          server.anonymousMode || false,
-          server.webhookAvatar,
-          (req.user as any).avatarUrl,
-        );
+            // Send AI response to Discord if webhook exists
+            if (ticket.channelId) {
+              await sendWebhookMessage(
+                ticket.channelId,
+                aiResponse.content,
+                "AI Assistant",
+                false,
+                server.webhookAvatar,
+                null,
+              );
+            }
+          }
+        } catch (aiError) {
+          console.error("Error generating AI response:", aiError);
+          // Don't fail message creation if AI fails
+        }
       }
 
       res.json(newMessage);
@@ -939,29 +999,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
 
-        if (ticket.channelId) {
-          const embed = new EmbedBuilder()
-            .setTitle("User Removed")
-            .setDescription(`<@${userId}> has been removed from the ticket`)
-            .setColor(0xff0000)
-            .setTimestamp();
-
-          await sendWebhookMessage(
-            ticket.channelId,
-            "",
-            (req.user as any).username,
-            server.anonymousMode || false,            server.webhookAvatar,
-            (req.user as any).avatarUrl,
-            [embed],
-          );
-        }
-
         res.json({ success: true });
       } catch (error) {
         console.error("Error removing user:", error);
         res.status(500).json({ message: "Failed to remove user" });
       }
-    },
+    }
   );
 
   app.post("/api/tickets/:ticketId/upgrade", requireAuth, async (req, res) => {

@@ -1,73 +1,166 @@
 import OpenAI from "openai";
 import { storage } from "./storage";
-import type { KnowledgeBase, Ticket, Message } from "@shared/schema";
+import { db } from "./db";
+import { knowledgeBase } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-interface AiTicketResponse {
-  response: string;
+interface AIResponse {
+  content: string;
   confidence: number;
-  usedKnowledgeBaseIds: number[];
-  shouldHandover: boolean;
+  usedKnowledgeBase: boolean;
 }
 
-export async function generateTicketResponse(
-  ticket: Ticket,
-  messages: Message[],
-  knowledgeBase: KnowledgeBase[]
-): Promise<AiTicketResponse> {
-  // Prepare context from knowledge base
-  const knowledgeContext = knowledgeBase
-    .map(
-      (kb) => `${kb.title}:\n${kb.content}${kb.url ? `\nReference: ${kb.url}` : ""}`
-    )
-    .join("\n\n");
+// Function to get knowledge base entries for a server
+async function getKnowledgeBaseContext(serverId: number): Promise<string> {
+  const entries = await db.select()
+    .from(knowledgeBase)
+    .where(eq(knowledgeBase.serverId, serverId));
 
-  // Prepare conversation history
-  const conversationHistory = messages
-    .map((msg) => `${msg.username}: ${msg.content}`)
-    .join("\n");
+  return entries
+    .map(entry => `Q: ${entry.keyPhrase}\nA: ${entry.answer}`)
+    .join('\n\n');
+}
 
+// Function to save a successful AI interaction to the knowledge base
+async function saveToKnowledgeBase(serverId: number, question: string, answer: string): Promise<void> {
   try {
+    await db.insert(knowledgeBase).values({
+      serverId,
+      keyPhrase: question.slice(0, 200), // Limit the length of the key phrase
+      answer,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+  } catch (error) {
+    console.error("Failed to save to knowledge base:", error);
+  }
+}
+
+export async function handleNewTicket(
+  ticketId: number,
+  serverId: number,
+  initialMessage: string
+): Promise<AIResponse | null> {
+  try {
+    console.log(`[AI] Processing new ticket ${ticketId} for server ${serverId}`);
+
+    // Don't respond if ticket is already claimed
+    const ticket = await storage.getTicket(ticketId);
+    if (!ticket || ticket.claimedBy) {
+      console.log(`[AI] Ticket ${ticketId} is claimed or not found, skipping response`);
+      return null;
+    }
+
+    // Get knowledge base context
+    const knowledgeContext = await getKnowledgeBaseContext(serverId);
+    console.log(`[AI] Retrieved knowledge base context for server ${serverId}`);
+
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         {
           role: "system",
-          content: `You are a helpful support assistant. Use the following knowledge base to help answer user queries:\n\n${knowledgeContext}\n\nIf you cannot confidently answer the query based on the knowledge base, indicate that the ticket should be handed over to human support.`
+          content: `You are a helpful support assistant. Use the following knowledge base to help answer user queries:\n\n${knowledgeContext}\n\nRespond naturally and professionally. If you cannot provide a confident answer, acknowledge the query and let them know a human support agent will assist them shortly. Format your response as JSON with: { "response": "your response text", "confidence": 0-1 score }`
         },
         {
           role: "user",
-          content: `Ticket conversation:\n${conversationHistory}\n\nPlease provide a response to help the user. Respond in JSON format with the following structure: { "response": "your response text", "confidence": number between 0 and 1, "usedKnowledgeBaseIds": array of knowledge base entry IDs used, "shouldHandover": boolean indicating if human support is needed }`
+          content: initialMessage
         }
       ],
-      response_format: { type: "json_object" },
+      response_format: { type: "json_object" }
     });
 
-    const result = JSON.parse(response.choices[0].message.content);
+    const result = JSON.parse(response.choices[0].message.content || '{}');
+
+    // If the response is confident enough, save it to the knowledge base
+    if (result.confidence > 0.8) {
+      await saveToKnowledgeBase(serverId, initialMessage, result.response);
+    }
+
+    console.log(`[AI] Generated response for ticket ${ticketId} with confidence ${result.confidence}`);
+
     return {
-      response: result.response,
-      confidence: result.confidence,
-      usedKnowledgeBaseIds: result.usedKnowledgeBaseIds,
-      shouldHandover: result.shouldHandover,
+      content: result.response || "I'll have a support agent assist you shortly.",
+      confidence: result.confidence || 0,
+      usedKnowledgeBase: knowledgeContext.length > 0
     };
+
   } catch (error) {
-    console.error("Error generating AI response:", error);
+    console.error("[AI] Error generating response:", error);
     return {
-      response: "I apologize, but I'm having trouble processing your request. Let me hand this over to our support team.",
+      content: "I apologize, but I'm having trouble processing your request. A support agent will assist you shortly.",
       confidence: 0,
-      usedKnowledgeBaseIds: [],
-      shouldHandover: true,
+      usedKnowledgeBase: false
     };
   }
 }
 
-export async function validateResponse(
-  response: string,
-  confidence: number,
-  knowledgeBaseIds: number[]
-): Promise<boolean> {
-  // Add additional validation logic here if needed
-  return confidence >= 0.7;
+// Function to check if AI should continue responding
+export async function shouldAIRespond(ticketId: number): Promise<boolean> {
+  const ticket = await storage.getTicket(ticketId);
+  const shouldRespond = ticket ? !ticket.claimedBy : false;
+  console.log(`[AI] Checking if should respond to ticket ${ticketId}: ${shouldRespond}`);
+  return shouldRespond;
+}
+
+// Function to handle ongoing conversation
+export async function handleTicketResponse(
+  ticketId: number,
+  serverId: number,
+  messageHistory: string[],
+  latestMessage: string
+): Promise<AIResponse | null> {
+  try {
+    console.log(`[AI] Processing message for ticket ${ticketId}`);
+
+    // Don't respond if ticket is claimed
+    if (!await shouldAIRespond(ticketId)) {
+      console.log(`[AI] Ticket ${ticketId} is claimed, skipping response`);
+      return null;
+    }
+
+    // Get knowledge base context
+    const knowledgeContext = await getKnowledgeBaseContext(serverId);
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: `You are a helpful support assistant. Use this knowledge base:\n\n${knowledgeContext}\n\nRespond naturally and professionally. If you cannot help, let them know a human agent will assist shortly. Format your response as JSON with: { "response": "your response text", "confidence": 0-1 score }`
+        },
+        {
+          role: "user",
+          content: `Conversation history:\n${messageHistory.join('\n')}\n\nLatest message: ${latestMessage}`
+        }
+      ],
+      response_format: { type: "json_object" }
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || '{}');
+
+    // If the response is confident enough, save it to the knowledge base
+    if (result.confidence > 0.8) {
+      await saveToKnowledgeBase(serverId, latestMessage, result.response);
+    }
+
+    console.log(`[AI] Generated response with confidence ${result.confidence}`);
+
+    return {
+      content: result.response || "I'll have a support agent assist you shortly.",
+      confidence: result.confidence || 0,
+      usedKnowledgeBase: knowledgeContext.length > 0
+    };
+
+  } catch (error) {
+    console.error("[AI] Error generating response:", error);
+    return {
+      content: "I apologize, but I'm having trouble processing your request. A support agent will assist you shortly.",
+      confidence: 0,
+      usedKnowledgeBase: false
+    };
+  }
 }
