@@ -24,6 +24,114 @@ import type { Server } from "http";
 import { storage } from "./storage";
 
 let client: Client | null = null;
+let isInitialized = false;
+
+export { client };
+
+export async function setupDiscordBot(server: Server) {
+  if (isInitialized) {
+    console.log('Discord bot already initialized');
+    return client;
+  }
+
+  try {
+    console.log('Starting Discord bot initialization...');
+
+    client = new Client({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+      ],
+    });
+
+    client.once("ready", async () => {
+      console.log(`Discord bot successfully logged in as ${client?.user?.tag}`);
+
+      try {
+        if (!client?.user) throw new Error("Client user is not defined");
+
+        console.log('Registering slash commands...');
+        const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN!);
+        await rest.put(
+          Routes.applicationCommands(client.user.id),
+          { body: commands }
+        );
+        console.log('Successfully registered slash commands');
+      } catch (error) {
+        console.error('Error registering slash commands:', error);
+      }
+    });
+
+    client.on("interactionCreate", async (interaction) => {
+      try {
+        if (interaction.isButton()) {
+          await handleButtonInteraction(interaction);
+        } else if (interaction.isChatInputCommand()) {
+          if (interaction.commandName === 'ticket') {
+            await handleTicketCommand(interaction);
+          } else if (interaction.commandName === 'upgrade') {
+            await handleUpgradeCommand(interaction);
+          } else if (interaction.commandName === 'add') {
+            await handleAddUserCommand(interaction);
+          } else if (interaction.commandName === 'remove') {
+            await handleRemoveUserCommand(interaction);
+          }
+        } else if (interaction.isModalSubmit()) {
+          if (interaction.customId.startsWith('ticket_form_')) {
+            await handleTicketFormSubmit(interaction);
+          }
+        }
+      } catch (error) {
+        console.error('Error handling interaction:', error);
+        try {
+          // Only reply if the interaction hasn't been acknowledged
+          if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({
+              content: 'There was an error processing your request.',
+              ephemeral: true
+            });
+          }
+        } catch (replyError) {
+          console.error('Error sending error reply:', replyError);
+        }
+      }
+    });
+
+    await client.login(process.env.DISCORD_BOT_TOKEN);
+    isInitialized = true;
+
+    return client;
+  } catch (error) {
+    console.error('Error in Discord bot setup:', error);
+    client = null;
+    isInitialized = false;
+    throw error;
+  }
+}
+
+// Extract ticket form handling to a separate function
+async function handleTicketFormSubmit(interaction: ModalSubmitInteraction) {
+  const panelId = parseInt(interaction.customId.split('_')[2]);
+  const panel = await storage.getPanel(panelId);
+
+  if (!panel) {
+    await interaction.reply({
+      content: 'This ticket panel no longer exists.',
+      ephemeral: true
+    });
+    return;
+  }
+
+  const responses: Record<string, string> = {};
+  interaction.fields.fields.forEach((field) => {
+    const fieldName = field.customId.replace('field_', '');
+    responses[fieldName] = field.value;
+  });
+
+  // Create ticket with form responses
+  await createTicketChannel(interaction, panel, responses);
+}
 
 const commands = [
   {
@@ -79,96 +187,6 @@ const commands = [
     ],
   },
 ];
-
-export { client };
-
-export async function setupDiscordBot(server: Server) {
-  try {
-    console.log('Starting Discord bot initialization...');
-
-    client = new Client({
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-      ],
-    });
-
-    client.once("ready", async () => {
-      console.log(`Discord bot successfully logged in as ${client?.user?.tag}`);
-
-      try {
-        if (!client?.user) throw new Error("Client user is not defined");
-
-        console.log('Registering slash commands...');
-        const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN!);
-        await rest.put(
-          Routes.applicationCommands(client.user.id),
-          { body: commands }
-        );
-        console.log('Successfully registered slash commands');
-      } catch (error) {
-        console.error('Error registering slash commands:', error);
-      }
-    });
-
-    client.on("interactionCreate", async (interaction) => {
-      try {
-        if (interaction.isButton()) {
-          await handleButtonInteraction(interaction);
-        } else if (interaction.isChatInputCommand()) {
-          if (interaction.commandName === 'ticket') {
-            await handleTicketCommand(interaction);
-          } else if (interaction.commandName === 'upgrade') {
-            await handleUpgradeCommand(interaction);
-          } else if (interaction.commandName === 'add') {
-            await handleAddUserCommand(interaction);
-          } else if (interaction.commandName === 'remove') {
-            await handleRemoveUserCommand(interaction);
-          }
-        } else if (interaction.isModalSubmit()) {
-          if (interaction.customId.startsWith('ticket_form_')) {
-            const panelId = parseInt(interaction.customId.split('_')[2]);
-            const panel = await storage.getPanel(panelId);
-
-            if (!panel) {
-              await interaction.reply({
-                content: 'This ticket panel no longer exists.',
-                ephemeral: true
-              });
-              return;
-            }
-
-            const responses: Record<string, string> = {};
-            interaction.fields.fields.forEach((field) => {
-              const fieldName = field.customId.replace('field_', '');
-              responses[fieldName] = field.value;
-            });
-
-            // Create ticket with form responses
-            await createTicketChannel(interaction, panel, responses);
-          }
-        }
-      } catch (error) {
-        console.error('Error handling interaction:', error);
-        if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-          await interaction.reply({
-            content: 'There was an error processing your request.',
-            ephemeral: true
-          }).catch(console.error);
-        }
-      }
-    });
-
-    await client.login(process.env.DISCORD_BOT_TOKEN);
-
-    return client;
-  } catch (error) {
-    console.error('Error in Discord bot setup:', error);
-    client = null;
-    throw error;
-  }
-}
 
 async function handleButtonInteraction(interaction: ButtonInteraction) {
   if (!interaction.customId.startsWith('ticket_')) return;
