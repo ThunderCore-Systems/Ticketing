@@ -40,21 +40,17 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
 
   const addPhrase = useMutation({
     mutationFn: async (data: typeof newPhrase) => {
-      try {
-        const res = await apiRequest("POST", `/api/servers/${serverId}/knowledge`, {
-          ...data,
-          serverId,
-        });
+      const res = await apiRequest("POST", `/api/servers/${serverId}/knowledge`, {
+        ...data,
+        serverId,
+      });
 
-        if (!res.ok) {
-          const error = await res.json();
-          throw new Error(error.message || 'Failed to add knowledge base entry');
-        }
-
-        return res.json();
-      } catch (error) {
-        throw error;
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to add knowledge base entry');
       }
+
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/servers/${serverId}/knowledge`] });
@@ -65,6 +61,7 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
       });
     },
     onError: (error: any) => {
+      console.error('Error adding phrase:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to add phrase. Please try again.",
@@ -75,21 +72,17 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
 
   const addLink = useMutation({
     mutationFn: async (data: typeof newLink) => {
-      try {
-        const res = await apiRequest("POST", `/api/servers/${serverId}/links`, {
-          ...data,
-          serverId,
-        });
+      const res = await apiRequest("POST", `/api/servers/${serverId}/links`, {
+        ...data,
+        serverId,
+      });
 
-        if (!res.ok) {
-          const error = await res.json();
-          throw new Error(error.message || 'Failed to add helpful link');
-        }
-
-        return res.json();
-      } catch (error) {
-        throw error;
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || 'Failed to add helpful link');
       }
+
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/servers/${serverId}/links`] });
@@ -100,6 +93,7 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
       });
     },
     onError: (error: any) => {
+      console.error('Error adding link:', error);
       toast({
         title: "Error",
         description: error.message || "Failed to add link. Please try again.",
@@ -123,7 +117,11 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
       return;
     }
 
-    await addPhrase.mutateAsync(newPhrase);
+    try {
+      await addPhrase.mutateAsync(newPhrase);
+    } catch (error) {
+      console.error('Error submitting phrase:', error);
+    }
   };
 
   const handleLinkSubmit = async () => {
@@ -145,7 +143,11 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
       return;
     }
 
-    await addLink.mutateAsync(newLink);
+    try {
+      await addLink.mutateAsync(newLink);
+    } catch (error) {
+      console.error('Error submitting link:', error);
+    }
   };
 
   return (
