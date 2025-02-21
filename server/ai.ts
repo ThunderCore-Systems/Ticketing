@@ -47,7 +47,7 @@ async function sendDiscordResponse(
   content: string,
   confidence: number,
   needsHumanSupport: boolean,
-  supportRoleId: string | null | undefined
+  supportRoleIds: string[]
 ): Promise<void> {
   const embed = new EmbedBuilder()
     .setColor(needsHumanSupport ? 0xffcc00 : 0x00ff00)
@@ -55,9 +55,11 @@ async function sendDiscordResponse(
     .setFooter({ text: `AI Confidence: ${Math.round(confidence * 100)}%` })
     .setTimestamp();
 
-  const message = needsHumanSupport && supportRoleId
-    ? `<@&${supportRoleId}> Support team needed!\n\n${content}`
-    : content;
+  let message = content;
+  if (needsHumanSupport && supportRoleIds?.length > 0) {
+    const roleMentions = supportRoleIds.map(id => `<@&${id}>`).join(' ');
+    message = `${roleMentions} Support team needed!\n\n${content}`;
+  }
 
   await sendWebhookMessage(
     channelId,
@@ -82,6 +84,13 @@ export async function handleNewTicket(
     const ticket = await storage.getTicket(ticketId);
     if (!ticket || ticket.claimedBy) {
       console.log(`[AI] Ticket ${ticketId} is claimed or not found, skipping response`);
+      return null;
+    }
+
+    // Get the panel for support role IDs
+    const panel = await storage.getPanel(ticket.panelId);
+    if (!panel) {
+      console.log(`[AI] Panel not found for ticket ${ticketId}`);
       return null;
     }
 
@@ -116,13 +125,12 @@ export async function handleNewTicket(
 
     // Send response through webhook if channel exists
     if (ticket.channelId) {
-      const server = await storage.getServer(serverId);
       await sendDiscordResponse(
         ticket.channelId,
         result.response,
         result.confidence,
         needsHumanSupport,
-        server?.supportRoleId
+        panel.supportRoleIds
       );
     }
 
@@ -168,6 +176,19 @@ export async function handleTicketResponse(
       return null;
     }
 
+    // Get the panel for support role IDs
+    const ticket = await storage.getTicket(ticketId);
+    if (!ticket) {
+      console.log(`[AI] Ticket ${ticketId} not found`);
+      return null;
+    }
+
+    const panel = await storage.getPanel(ticket.panelId);
+    if (!panel) {
+      console.log(`[AI] Panel not found for ticket ${ticketId}`);
+      return null;
+    }
+
     // Get knowledge base context
     const knowledgeContext = await getKnowledgeBaseContext(serverId);
 
@@ -196,16 +217,14 @@ export async function handleTicketResponse(
 
     console.log(`[AI] Generated response with confidence ${result.confidence}`);
 
-    // Get ticket and server info for webhook
-    const ticket = await storage.getTicket(ticketId);
-    if (ticket?.channelId) {
-      const server = await storage.getServer(serverId);
+    // Send through webhook if channel exists
+    if (ticket.channelId) {
       await sendDiscordResponse(
         ticket.channelId,
         result.response,
         result.confidence,
         needsHumanSupport,
-        server?.supportRoleId
+        panel.supportRoleIds
       );
     }
 
