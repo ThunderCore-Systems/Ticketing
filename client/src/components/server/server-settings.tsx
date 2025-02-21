@@ -26,7 +26,7 @@ interface ServerSettingsProps {
   server: Server;
 }
 
-const SUBSCRIPTION_PRICE_ID = "price_1QusjjP6DDFtG7Mv9cIUpclK"; // Define the constant here
+const SUBSCRIPTION_PRICE_ID = "price_1QusjjP6DDFtG7Mv9cIUpclK";
 
 export default function ServerSettings({ server }: ServerSettingsProps) {
   const { toast } = useToast();
@@ -90,11 +90,38 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
     }
   };
 
-  const createSubscription = async (priceId: string, serverId: string) => {
-    const res = await apiRequest("POST", `/api/subscriptions/${serverId}`, { priceId });
-    return res.json();
-  };
+  const handleAIToggle = async (checked: boolean) => {
+    if (checked && server.subscriptionStatus !== "active") {
+      try {
+        const res = await apiRequest("POST", `/api/stripe/create-subscription`, {
+          priceId: SUBSCRIPTION_PRICE_ID,
+          serverId: server.id,
+        });
+        const session = await res.json();
 
+        if (session.url) {
+          window.location.href = session.url;
+        }
+      } catch (error) {
+        toast({
+          title: "Subscription Required",
+          description: "You need an active subscription to enable AI features.",
+          variant: "destructive",
+        });
+      }
+      return;
+    }
+
+    try {
+      await updateSettings.mutateAsync({ enableAI: checked });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update AI settings. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -281,28 +308,16 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               </Label>
               <p className="text-sm text-muted-foreground">
                 Enable AI to automatically respond to tickets using your knowledge base
+                {server.subscriptionStatus !== "active" && (
+                  <span className="block text-red-500">
+                    Requires an active subscription
+                  </span>
+                )}
               </p>
             </div>
             <Switch
               checked={server.enableAI || false}
-              onCheckedChange={async (checked) => {
-                if (checked && server.subscriptionStatus !== "active") {
-                  try {
-                    const session = await createSubscription(SUBSCRIPTION_PRICE_ID, server.id.toString());
-                    if (session.url) {
-                      window.location.href = session.url;
-                    }
-                  } catch (error) {
-                    toast({
-                      title: "Error",
-                      description: "Failed to enable AI. Please try again.",
-                      variant: "destructive",
-                    });
-                  }
-                  return;
-                }
-                updateSettings.mutate({ enableAI: checked });
-              }}
+              onCheckedChange={handleAIToggle}
               disabled={updateSettings.isPending}
             />
           </div>

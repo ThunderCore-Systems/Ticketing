@@ -40,8 +40,21 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
 
   const addPhrase = useMutation({
     mutationFn: async (data: typeof newPhrase) => {
-      const res = await apiRequest("POST", `/api/servers/${serverId}/knowledge`, data);
-      return res.json();
+      try {
+        const res = await apiRequest("POST", `/api/servers/${serverId}/knowledge`, {
+          ...data,
+          serverId,
+        });
+
+        if (!res.ok) {
+          const error = await res.json();
+          throw new Error(error.message || 'Failed to add knowledge base entry');
+        }
+
+        return res.json();
+      } catch (error) {
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/servers/${serverId}/knowledge`] });
@@ -62,8 +75,21 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
 
   const addLink = useMutation({
     mutationFn: async (data: typeof newLink) => {
-      const res = await apiRequest("POST", `/api/servers/${serverId}/links`, data);
-      return res.json();
+      try {
+        const res = await apiRequest("POST", `/api/servers/${serverId}/links`, {
+          ...data,
+          serverId,
+        });
+
+        if (!res.ok) {
+          const error = await res.json();
+          throw new Error(error.message || 'Failed to add helpful link');
+        }
+
+        return res.json();
+      } catch (error) {
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/servers/${serverId}/links`] });
@@ -86,6 +112,41 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
   if (!server?.enableAI) {
     return null;
   }
+
+  const handlePhraseSubmit = async () => {
+    if (!newPhrase.keyPhrase || !newPhrase.answer) {
+      toast({
+        title: "Validation Error",
+        description: "Both key phrase and answer are required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    await addPhrase.mutateAsync(newPhrase);
+  };
+
+  const handleLinkSubmit = async () => {
+    if (!newLink.title || !newLink.url) {
+      toast({
+        title: "Validation Error",
+        description: "Title and URL are required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!newLink.url.startsWith('http://') && !newLink.url.startsWith('https://')) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid URL starting with http:// or https://",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    await addLink.mutateAsync(newLink);
+  };
 
   return (
     <div className="space-y-6">
@@ -130,7 +191,7 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
                   />
                 </div>
                 <Button
-                  onClick={() => addPhrase.mutate(newPhrase)}
+                  onClick={handlePhraseSubmit}
                   disabled={addPhrase.isPending}
                 >
                   Add Phrase
@@ -213,7 +274,7 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
                   />
                 </div>
                 <Button
-                  onClick={() => addLink.mutate(newLink)}
+                  onClick={handleLinkSubmit}
                   disabled={addLink.isPending}
                 >
                   Add Link
