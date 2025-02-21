@@ -13,7 +13,8 @@ import { useToast } from "@/hooks/use-toast";
 import { createSubscription } from "@/lib/stripe";
 import type { Server } from "@shared/schema";
 
-const PRICE_ID = "price_1QtEdzP6DDFtG7MvUBtGIPIG"; // Direct price ID
+// Update PRICE_ID constant
+const PRICE_ID = "price_1QusjjP6DDFtG7Mv9cIUpclK"; // AI Support subscription
 
 export default function Billing() {
   const { toast } = useToast();

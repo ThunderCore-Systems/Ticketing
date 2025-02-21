@@ -13,6 +13,7 @@ import TicketList from "@/components/tickets/ticket-list";
 import TicketPanels from "@/components/server/ticket-panels";
 import ServerSettings from "@/components/server/server-settings";
 import ServerStatistics from "@/components/server/server-statistics";
+import KnowledgeBase from "@/components/server/knowledge-base";
 import type { Server } from "@shared/schema";
 
 export default function ServerDashboard() {
@@ -52,6 +53,7 @@ export default function ServerDashboard() {
           <TabsTrigger value="tickets">Tickets</TabsTrigger>
           <TabsTrigger value="panels">Ticket Panels</TabsTrigger>
           <TabsTrigger value="statistics">Statistics</TabsTrigger>
+          <TabsTrigger value="knowledge">Knowledge Base</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
@@ -75,6 +77,10 @@ export default function ServerDashboard() {
 
         <TabsContent value="statistics">
           <ServerStatistics serverId={serverId} />
+        </TabsContent>
+
+        <TabsContent value="knowledge">
+          <KnowledgeBase serverId={serverId} />
         </TabsContent>
 
         <TabsContent value="settings">

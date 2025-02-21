@@ -88,6 +88,12 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
     }
   };
 
+  const createSubscription = async (priceId: string, serverId: string) => {
+    const res = await apiRequest("POST", `/api/subscriptions/${serverId}`, { priceId });
+    return res.json();
+  };
+
+
   return (
     <div className="space-y-6">
       <Card>
@@ -261,6 +267,40 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               onCheckedChange={(checked) =>
                 updateSettings.mutate({ restrict_claimed_messages: checked })
               }
+              disabled={updateSettings.isPending}
+            />
+          </div>
+
+          {/* Added AI Setting */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label>
+                AI Support Assistant
+              </Label>
+              <p className="text-sm text-muted-foreground">
+                Enable AI to automatically respond to tickets using your knowledge base
+              </p>
+            </div>
+            <Switch
+              checked={server.enableAI || false}
+              onCheckedChange={async (checked) => {
+                if (checked && server.subscriptionStatus !== "active") {
+                  try {
+                    const session = await createSubscription("price_1QusjjP6DDFtG7Mv9cIUpclK", server.id);
+                    if (session.url) {
+                      window.location.href = session.url;
+                    }
+                  } catch (error) {
+                    toast({
+                      title: "Error",
+                      description: "Failed to enable AI. Please try again.",
+                      variant: "destructive",
+                    });
+                  }
+                  return;
+                }
+                updateSettings.mutate({ enableAI: checked });
+              }}
               disabled={updateSettings.isPending}
             />
           </div>
