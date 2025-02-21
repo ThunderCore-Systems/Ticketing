@@ -1866,6 +1866,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to take over ticket" });
     }
   });
+  // Add this new route after the existing server routes
+  app.patch("/api/servers/:serverId/settings", requireAuth, async (req, res) => {
+    try {
+      const serverId = parseInt(req.params.serverId);
+      const server = await storage.getServer(serverId);
+
+      if (!server) {
+        return res.status(404).json({ message: "Server not found" });
+      }
+
+      // Check if user has permission to update settings
+      if (server.ownerId !== (req.user as any).id && 
+          server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: "Not authorized to update server settings" });
+      }
+
+      const validSettings = {
+        aiEnabled: req.body.aiEnabled,
+        anonymousMode: req.body.anonymousMode,
+        restrictClaimedMessages: req.body.restrictClaimedMessages,
+        autoArchive: req.body.autoArchive,
+        activityLogs: req.body.activityLogs,
+        enableStats: req.body.enableStats,
+        enableTeamStats: req.body.enableTeamStats,
+      };
+
+      // Update only valid settings that are defined
+      const updateData = Object.entries(validSettings)
+        .filter(([_, value]) => value !== undefined)
+        .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
+
+      console.log(`[Server Settings] Updating server ${serverId} settings:`, updateData);
+
+      const updatedServer = await storage.updateServer(serverId, updateData);
+      console.log(`[Server Settings] Successfully updated server ${serverId} settings`);
+
+      res.json(updatedServer);
+    } catch (error) {
+      console.error("[Server Settings] Error updating server settings:", error);
+      res.status(500).json({ message: "Failed to update server settings" });
+    }
+  });
+
   app.use("/api", knowledgeRoutes);
   return httpServer;
 }
