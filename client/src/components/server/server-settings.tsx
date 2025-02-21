@@ -113,7 +113,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
     }
 
     try {
-      await updateSettings.mutateAsync({ enableAI: checked });
+      await updateSettings.mutateAsync({ aiEnabled: checked });
     } catch (error) {
       toast({
         title: "Error",
@@ -316,7 +316,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               </p>
             </div>
             <Switch
-              checked={server.enableAI || false}
+              checked={server.aiEnabled || false}
               onCheckedChange={handleAIToggle}
               disabled={updateSettings.isPending}
             />
