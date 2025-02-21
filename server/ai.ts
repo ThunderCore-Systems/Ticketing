@@ -18,27 +18,20 @@ interface AIResponse {
 
 // Function to get knowledge base entries for a server
 async function getKnowledgeBaseContext(serverId: number): Promise<string> {
-  const entries = await db.select()
-    .from(knowledgeBase)
-    .where(eq(knowledgeBase.serverId, serverId));
-
-  return entries
-    .map(entry => `Q: ${entry.keyPhrase}\nA: ${entry.answer}`)
-    .join('\n\n');
-}
-
-// Function to save a successful AI interaction to the knowledge base
-async function saveToKnowledgeBase(serverId: number, question: string, answer: string): Promise<void> {
   try {
-    await db.insert(knowledgeBase).values({
-      serverId,
-      keyPhrase: question.slice(0, 200), // Limit the length of the key phrase
-      answer,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    });
+    const entries = await db.select()
+      .from(knowledgeBase)
+      .where(eq(knowledgeBase.serverId, serverId));
+
+    const context = entries
+      .map(entry => `Q: ${entry.keyPhrase}\nA: ${entry.answer}`)
+      .join('\n\n');
+
+    console.log(`[AI] Retrieved ${entries.length} knowledge base entries for server ${serverId}`);
+    return context;
   } catch (error) {
-    console.error("Failed to save to knowledge base:", error);
+    console.error(`[AI] Error getting knowledge base context:`, error);
+    return '';
   }
 }
 
@@ -49,27 +42,36 @@ async function sendDiscordResponse(
   needsHumanSupport: boolean,
   supportRoleIds: string[]
 ): Promise<void> {
-  const embed = new EmbedBuilder()
-    .setColor(needsHumanSupport ? 0xffcc00 : 0x00ff00)
-    .setDescription(content)
-    .setFooter({ text: `AI Confidence: ${Math.round(confidence * 100)}%` })
-    .setTimestamp();
+  try {
+    console.log(`[AI] Preparing Discord response for channel ${channelId}`);
+    console.log(`[AI] Support needed: ${needsHumanSupport}, Confidence: ${confidence}, Role IDs:`, supportRoleIds);
 
-  let message = content;
-  if (needsHumanSupport && supportRoleIds?.length > 0) {
-    const roleMentions = supportRoleIds.map(id => `<@&${id}>`).join(' ');
-    message = `${roleMentions} Support team needed!\n\n${content}`;
+    const embed = new EmbedBuilder()
+      .setColor(needsHumanSupport ? 0xffcc00 : 0x00ff00)
+      .setDescription(content)
+      .setFooter({ text: `AI Confidence: ${Math.round(confidence * 100)}%` })
+      .setTimestamp();
+
+    let message = content;
+    if (needsHumanSupport && supportRoleIds?.length > 0) {
+      const roleMentions = supportRoleIds.map(id => `<@&${id}>`).join(' ');
+      message = `${roleMentions} Support team needed!\n\n${content}`;
+      console.log(`[AI] Added role mentions: ${roleMentions}`);
+    }
+
+    await sendWebhookMessage(
+      channelId,
+      message,
+      "AI Assistant",
+      false,
+      null,
+      null,
+      [embed]
+    );
+    console.log(`[AI] Successfully sent Discord response to channel ${channelId}`);
+  } catch (error) {
+    console.error(`[AI] Error sending Discord response:`, error);
   }
-
-  await sendWebhookMessage(
-    channelId,
-    message,
-    "AI Assistant",
-    false,
-    null,
-    null,
-    [embed]
-  );
 }
 
 export async function handleNewTicket(
@@ -94,9 +96,10 @@ export async function handleNewTicket(
       return null;
     }
 
+    console.log(`[AI] Found panel with support roles:`, panel.supportRoleIds);
+
     // Get knowledge base context
     const knowledgeContext = await getKnowledgeBaseContext(serverId);
-    console.log(`[AI] Retrieved knowledge base context for server ${serverId}`);
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -116,12 +119,12 @@ export async function handleNewTicket(
     const result = JSON.parse(response.choices[0].message.content || '{}');
     const needsHumanSupport = result.confidence < 0.7 || result.needsHumanSupport;
 
+    console.log(`[AI] Generated response with confidence ${result.confidence}, needs support: ${needsHumanSupport}`);
+
     // If the response is confident enough, save it to the knowledge base
     if (result.confidence > 0.8) {
       await saveToKnowledgeBase(serverId, initialMessage, result.response);
     }
-
-    console.log(`[AI] Generated response for ticket ${ticketId} with confidence ${result.confidence}`);
 
     // Send response through webhook if channel exists
     if (ticket.channelId) {
@@ -189,6 +192,8 @@ export async function handleTicketResponse(
       return null;
     }
 
+    console.log(`[AI] Found panel with support roles:`, panel.supportRoleIds);
+
     // Get knowledge base context
     const knowledgeContext = await getKnowledgeBaseContext(serverId);
 
@@ -215,7 +220,7 @@ export async function handleTicketResponse(
       await saveToKnowledgeBase(serverId, latestMessage, result.response);
     }
 
-    console.log(`[AI] Generated response with confidence ${result.confidence}`);
+    console.log(`[AI] Generated response with confidence ${result.confidence}, needs support: ${needsHumanSupport}`);
 
     // Send through webhook if channel exists
     if (ticket.channelId) {
@@ -243,5 +248,19 @@ export async function handleTicketResponse(
       usedKnowledgeBase: false,
       needsHumanSupport: true
     };
+  }
+}
+
+async function saveToKnowledgeBase(serverId: number, question: string, answer: string): Promise<void> {
+  try {
+    await db.insert(knowledgeBase).values({
+      serverId,
+      keyPhrase: question.slice(0, 200), // Limit the length of the key phrase
+      answer,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+  } catch (error) {
+    console.error("Failed to save to knowledge base:", error);
   }
 }

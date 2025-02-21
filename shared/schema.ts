@@ -3,19 +3,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
 
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  discordId: text("discord_id").notNull().unique(),
-  username: text("username").notNull(),
-  avatarUrl: text("avatar_url"),
-  accessToken: text("access_token"),
-  refreshToken: text("refresh_token"),
-  serverTokens: integer("server_tokens").default(0),
-  ISADMIN: boolean("is_admin").default(false),
-  isBanned: boolean("is_banned").default(false),
-  isServerManager: boolean("is_server_manager").default(false), 
-});
-
+// Remove the supportRoleId field that's causing issues
 export const servers = pgTable("servers", {
   id: serial("id").primaryKey(),
   discordId: text("discord_id").notNull().unique(),
@@ -34,8 +22,20 @@ export const servers = pgTable("servers", {
   enableTeamStats: boolean("enable_team_stats").default(false),
   restrictClaimedMessages: boolean("restrict_claimed_messages").default(false),
   aiEnabled: boolean("ai_enabled").default(false), 
-  supportRoleId: text("support_role_id"), 
   lastSynced: timestamp("last_synced"),
+});
+
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  discordId: text("discord_id").notNull().unique(),
+  username: text("username").notNull(),
+  avatarUrl: text("avatar_url"),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  serverTokens: integer("server_tokens").default(0),
+  ISADMIN: boolean("is_admin").default(false),
+  isBanned: boolean("is_banned").default(false),
+  isServerManager: boolean("is_server_manager").default(false), 
 });
 
 export const panels = pgTable("panels", {
