@@ -19,6 +19,8 @@ import passport from "passport";
 import { Strategy as DiscordStrategy } from "passport-discord";
 import type { DiscordGuild, TicketMessage } from "./types";
 import { TextChannel, EmbedBuilder } from "discord.js";
+import knowledgeRoutes from "./routes/knowledge";
+import {db} from './db'; // Added import for db
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!;
@@ -503,7 +505,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user has permission to send messages
-      if (server.restrict_claimed_messages && ticket.claimedBy) {
+      if (server.restrictClaimedMessages && ticket.claimedBy) {
         // Allow server owner and claimed user to send messages
         const isOwner = server.ownerId === (req.user as any).id;
         const isClaimedBy = ticket.claimedBy === (req.user as any).discordId;
@@ -531,6 +533,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateTicket(ticketId, {
         messages: [...existingMessages, JSON.stringify(newMessage)],
       });
+
+      // Auto-save support team responses to knowledge base
+      const isSupportTeam = ticket.claimedBy === (req.user as any).discordId;
+      if (isSupportTeam && server.aiSupportEnabled) {
+        try {
+          // Get the customer's last message for context
+          const messages = existingMessages.map(msg => typeof msg === 'string' ? JSON.parse(msg) : msg);
+          const customerMessages = messages.filter(msg => msg.userId === ticket.userId);
+          const lastCustomerMessage = customerMessages[customerMessages.length - 1];
+
+          if (lastCustomerMessage) {
+            await db.insert(knowledgeBase).values({
+              serverId: server.id,
+              keyPhrase: lastCustomerMessage.content.slice(0, 200), // Use first 200 chars of question
+              answer: content,
+              createdAt: new Date(),
+              updatedAt: new Date()
+            });
+          }
+        } catch (kbError) {
+          console.error("Failed to save to knowledge base:", kbError);
+          // Don't fail the message save if knowledge base save fails
+        }
+      }
 
       if (
         server.ownerId === (req.user as any).id ||
@@ -924,8 +950,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ticket.channelId,
             "",
             (req.user as any).username,
-            server.anonymousMode || false,
-            server.webhookAvatar,
+            server.anonymousMode || false,            server.webhookAvatar,
             (req.user as any).avatarUrl,
             [embed],
           );
@@ -961,7 +986,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { roleId } = req.body;
-      if (!roleId) {
+      if(!roleId) {
         return res.status(400).json({ message: "Role ID is required" });
       }
 
@@ -1790,7 +1815,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to take over ticket" });
     }
   });
-
+  app.use("/api", knowledgeRoutes);
   return httpServer;
 }
 

@@ -1,0 +1,69 @@
+index-CsRXcop-.js:48 
+            
+            
+           GET https://flaming-ticketing.replit.app/api/servers/8/knowledge 500 (Internal Server Error)
+(anonymous) @ index-CsRXcop-.js:48
+o @ index-CsRXcop-.js:48
+v @ index-CsRXcop-.js:48
+start @ index-CsRXcop-.js:48
+fetch @ index-CsRXcop-.js:48
+Xl @ index-CsRXcop-.js:48
+onSubscribe @ index-CsRXcop-.js:48
+subscribe @ index-CsRXcop-.js:48
+(anonymous) @ index-CsRXcop-.js:48
+Nj @ index-CsRXcop-.js:38
+ih @ index-CsRXcop-.js:40
+qa @ index-CsRXcop-.js:40
+VF @ index-CsRXcop-.js:40
+Oo @ index-CsRXcop-.js:40
+tS @ index-CsRXcop-.js:40
+uo @ index-CsRXcop-.js:38
+(anonymous) @ index-CsRXcop-.js:40Understand this errorAI
+index-CsRXcop-.js:48 
+            
+            
+           POST https://flaming-ticketing.replit.app/api/servers/8/knowledge 500 (Internal Server Error)
+Tt @ index-CsRXcop-.js:48
+mutationFn @ index-CsRXcop-.js:307
+fn @ index-CsRXcop-.js:48
+v @ index-CsRXcop-.js:48
+start @ index-CsRXcop-.js:48
+execute @ index-CsRXcop-.js:48
+await in execute
+mutate @ index-CsRXcop-.js:48
+u @ index-CsRXcop-.js:307
+uL @ index-CsRXcop-.js:37
+dL @ index-CsRXcop-.js:37
+pL @ index-CsRXcop-.js:37
+E1 @ index-CsRXcop-.js:37
+mj @ index-CsRXcop-.js:37
+(anonymous) @ index-CsRXcop-.js:37
+kb @ index-CsRXcop-.js:40
+FC @ index-CsRXcop-.js:37
+Fm @ index-CsRXcop-.js:37
+ab @ index-CsRXcop-.js:37
+_L @ index-CsRXcop-.js:37Understand this errorAI
+index-CsRXcop-.js:307 Error adding phrase: Error: 500: Failed to create knowledge base entry
+    at K_ (index-CsRXcop-.js:48:42816)
+    at async Tt (index-CsRXcop-.js:48:43056)
+    at async Object.mutationFn (index-CsRXcop-.js:307:334)
+onError @ index-CsRXcop-.js:307
+execute @ index-CsRXcop-.js:48
+await in execute
+mutate @ index-CsRXcop-.js:48
+u @ index-CsRXcop-.js:307
+uL @ index-CsRXcop-.js:37
+dL @ index-CsRXcop-.js:37
+pL @ index-CsRXcop-.js:37
+E1 @ index-CsRXcop-.js:37
+mj @ index-CsRXcop-.js:37
+(anonymous) @ index-CsRXcop-.js:37
+kb @ index-CsRXcop-.js:40
+FC @ index-CsRXcop-.js:37
+Fm @ index-CsRXcop-.js:37
+ab @ index-CsRXcop-.js:37
+_L @ index-CsRXcop-.js:37Understand this errorAI
+index-CsRXcop-.js:307 Error submitting phrase: Error: 500: Failed to create knowledge base entry
+    at K_ (index-CsRXcop-.js:48:42816)
+    at async Tt (index-CsRXcop-.js:48:43056)
+    at async Object.mutationFn (index-CsRXcop-.js:307:334)
