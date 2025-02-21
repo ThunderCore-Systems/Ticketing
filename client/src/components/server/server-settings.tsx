@@ -26,6 +26,8 @@ interface ServerSettingsProps {
   server: Server;
 }
 
+const SUBSCRIPTION_PRICE_ID = "price_1QusjjP6DDFtG7Mv9cIUpclK"; // Define the constant here
+
 export default function ServerSettings({ server }: ServerSettingsProps) {
   const { toast } = useToast();
 
@@ -263,15 +265,15 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               </p>
             </div>
             <Switch
-              checked={server.restrict_claimed_messages || false}
+              checked={server.restrictClaimedMessages || false}
               onCheckedChange={(checked) =>
-                updateSettings.mutate({ restrict_claimed_messages: checked })
+                updateSettings.mutate({ restrictClaimedMessages: checked })
               }
               disabled={updateSettings.isPending}
             />
           </div>
 
-          {/* Added AI Setting */}
+          {/* AI Setting */}
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label>
@@ -286,7 +288,7 @@ export default function ServerSettings({ server }: ServerSettingsProps) {
               onCheckedChange={async (checked) => {
                 if (checked && server.subscriptionStatus !== "active") {
                   try {
-                    const session = await createSubscription("price_1QusjjP6DDFtG7Mv9cIUpclK", server.id);
+                    const session = await createSubscription(SUBSCRIPTION_PRICE_ID, server.id.toString());
                     if (session.url) {
                       window.location.href = session.url;
                     }

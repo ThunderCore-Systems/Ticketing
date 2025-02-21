@@ -32,6 +32,8 @@ export const servers = pgTable("servers", {
   activityLogs: boolean("activity_logs").default(false),
   enableStats: boolean("enable_stats").default(false),
   enableTeamStats: boolean("enable_team_stats").default(false),
+  restrictClaimedMessages: boolean("restrict_claimed_messages").default(false),
+  enableAI: boolean("enable_ai").default(false),
   lastSynced: timestamp("last_synced"),
 });
 
@@ -161,16 +163,24 @@ export type InsertPanel = z.infer<typeof insertPanelSchema>;
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
 
 
-// Add after the existing tables
+// Updated knowledge base schema
 export const knowledgeBase = pgTable("knowledge_base", {
   id: serial("id").primaryKey(),
   serverId: integer("server_id").references(() => servers.id),
-  title: text("title").notNull(),
-  content: text("content").notNull(),
-  category: text("category"),
-  url: text("url"),
+  keyPhrase: text("key_phrase").notNull(),
+  answer: text("answer").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// New helpful links table
+export const helpfulLinks = pgTable("helpful_links", {
+  id: serial("id").primaryKey(),
+  serverId: integer("server_id").references(() => servers.id),
+  title: text("title").notNull(),
+  url: text("url").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const aiResponses = pgTable("ai_responses", {

@@ -7,7 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2 } from "lucide-react";
+import { Trash2, Link as LinkIcon } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface KnowledgeBaseProps {
   serverId: number;
@@ -15,117 +16,134 @@ interface KnowledgeBaseProps {
 
 export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
   const { toast } = useToast();
-  const [newEntry, setNewEntry] = useState({
+  const [newPhrase, setNewPhrase] = useState({
+    keyPhrase: "",
+    answer: "",
+  });
+  const [newLink, setNewLink] = useState({
     title: "",
-    content: "",
-    category: "",
     url: "",
+    description: "",
+  });
+
+  const { data: server } = useQuery({
+    queryKey: [`/api/servers/${serverId}`],
   });
 
   const { data: knowledgeBase } = useQuery({
     queryKey: [`/api/servers/${serverId}/knowledge`],
   });
 
-  const addEntry = useMutation({
-    mutationFn: async (data: typeof newEntry) => {
+  const { data: helpfulLinks } = useQuery({
+    queryKey: [`/api/servers/${serverId}/links`],
+  });
+
+  const addPhrase = useMutation({
+    mutationFn: async (data: typeof newPhrase) => {
       const res = await apiRequest("POST", `/api/servers/${serverId}/knowledge`, data);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/servers/${serverId}/knowledge`] });
-      setNewEntry({ title: "", content: "", category: "", url: "" });
+      setNewPhrase({ keyPhrase: "", answer: "" });
       toast({
-        title: "Entry Added",
-        description: "Knowledge base entry has been added successfully.",
+        title: "Phrase Added",
+        description: "Knowledge base has been updated successfully.",
       });
     },
     onError: (error: any) => {
       toast({
         title: "Error",
-        description: error.message || "Failed to add entry. Please try again.",
+        description: error.message || "Failed to add phrase. Please try again.",
         variant: "destructive",
       });
     },
   });
 
+  const addLink = useMutation({
+    mutationFn: async (data: typeof newLink) => {
+      const res = await apiRequest("POST", `/api/servers/${serverId}/links`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/servers/${serverId}/links`] });
+      setNewLink({ title: "", url: "", description: "" });
+      toast({
+        title: "Link Added",
+        description: "Helpful link has been added successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add link. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Don't render if AI is not enabled
+  if (!server?.enableAI) {
+    return null;
+  }
+
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Add Knowledge Base Entry</CardTitle>
-          <CardDescription>
-            Add information that the AI can use to respond to tickets
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div>
-              <Input
-                placeholder="Title"
-                value={newEntry.title}
-                onChange={(e) =>
-                  setNewEntry((prev) => ({
-                    ...prev,
-                    title: e.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div>
-              <Textarea
-                placeholder="Content"
-                value={newEntry.content}
-                onChange={(e) =>
-                  setNewEntry((prev) => ({
-                    ...prev,
-                    content: e.target.value,
-                  }))
-                }
-              />
-            </div>
-            <div className="flex gap-4">
-              <Input
-                placeholder="Category"
-                value={newEntry.category}
-                onChange={(e) =>
-                  setNewEntry((prev) => ({
-                    ...prev,
-                    category: e.target.value,
-                  }))
-                }
-              />
-              <Input
-                placeholder="URL (optional)"
-                value={newEntry.url}
-                onChange={(e) =>
-                  setNewEntry((prev) => ({
-                    ...prev,
-                    url: e.target.value,
-                  }))
-                }
-              />
-            </div>
-            <Button
-              onClick={() => addEntry.mutate(newEntry)}
-              disabled={addEntry.isPending}
-            >
-              Add Entry
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="phrases" className="w-full">
+        <TabsList>
+          <TabsTrigger value="phrases">Key Phrases & Answers</TabsTrigger>
+          <TabsTrigger value="links">Helpful Links</TabsTrigger>
+        </TabsList>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Knowledge Base Entries</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <TabsContent value="phrases" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Add New Key Phrase</CardTitle>
+              <CardDescription>
+                Add common questions or issues with their responses
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <Input
+                    placeholder="Key Phrase or Question"
+                    value={newPhrase.keyPhrase}
+                    onChange={(e) =>
+                      setNewPhrase((prev) => ({
+                        ...prev,
+                        keyPhrase: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div>
+                  <Textarea
+                    placeholder="Answer or Response"
+                    value={newPhrase.answer}
+                    onChange={(e) =>
+                      setNewPhrase((prev) => ({
+                        ...prev,
+                        answer: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <Button
+                  onClick={() => addPhrase.mutate(newPhrase)}
+                  disabled={addPhrase.isPending}
+                >
+                  Add Phrase
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>URL</TableHead>
+                <TableHead>Key Phrase</TableHead>
+                <TableHead>Answer</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -133,21 +151,9 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
               {knowledgeBase?.map((entry: any) => (
                 <TableRow key={entry.id}>
                   <TableCell className="font-medium">
-                    {entry.title}
+                    {entry.keyPhrase}
                   </TableCell>
-                  <TableCell>{entry.category}</TableCell>
-                  <TableCell>
-                    {entry.url && (
-                      <a
-                        href={entry.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-500 hover:underline"
-                      >
-                        {entry.url}
-                      </a>
-                    )}
-                  </TableCell>
+                  <TableCell>{entry.answer}</TableCell>
                   <TableCell>
                     <Button variant="destructive" size="sm">
                       <Trash2 className="h-4 w-4" />
@@ -157,8 +163,103 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
               ))}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        </TabsContent>
+
+        <TabsContent value="links" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Add Helpful Link</CardTitle>
+              <CardDescription>
+                Add links to documentation, FAQs, or other helpful resources
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <Input
+                    placeholder="Title"
+                    value={newLink.title}
+                    onChange={(e) =>
+                      setNewLink((prev) => ({
+                        ...prev,
+                        title: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div>
+                  <Input
+                    placeholder="URL"
+                    type="url"
+                    value={newLink.url}
+                    onChange={(e) =>
+                      setNewLink((prev) => ({
+                        ...prev,
+                        url: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div>
+                  <Input
+                    placeholder="Description (optional)"
+                    value={newLink.description}
+                    onChange={(e) =>
+                      setNewLink((prev) => ({
+                        ...prev,
+                        description: e.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <Button
+                  onClick={() => addLink.mutate(newLink)}
+                  disabled={addLink.isPending}
+                >
+                  Add Link
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Title</TableHead>
+                <TableHead>URL</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {helpfulLinks?.map((link: any) => (
+                <TableRow key={link.id}>
+                  <TableCell className="font-medium">
+                    {link.title}
+                  </TableCell>
+                  <TableCell>
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:underline flex items-center gap-1"
+                    >
+                      <LinkIcon className="h-4 w-4" />
+                      {link.url}
+                    </a>
+                  </TableCell>
+                  <TableCell>{link.description}</TableCell>
+                  <TableCell>
+                    <Button variant="destructive" size="sm">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
