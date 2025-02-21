@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, boolean, json } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, boolean, json, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -13,7 +13,7 @@ export const users = pgTable("users", {
   serverTokens: integer("server_tokens").default(0),
   ISADMIN: boolean("is_admin").default(false),
   isBanned: boolean("is_banned").default(false),
-  isServerManager: boolean("is_server_manager").default(false), // New field for server management privileges
+  isServerManager: boolean("is_server_manager").default(false), 
 });
 
 export const servers = pgTable("servers", {
@@ -46,7 +46,6 @@ export const panels = pgTable("panels", {
   prefix: text("prefix").notNull(),
   transcriptChannelId: text("transcript_channel_id"),
   formEnabled: boolean("form_enabled").default(false),
-  // Explicitly type formFields as a JSON array
   formFields: json("form_fields").$type<Array<{
     label: string;
     type: 'text' | 'textarea' | 'select';
@@ -160,3 +159,58 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertServer = z.infer<typeof insertServerSchema>;
 export type InsertPanel = z.infer<typeof insertPanelSchema>;
 export type InsertTicket = z.infer<typeof insertTicketSchema>;
+
+
+// Add after the existing tables
+export const knowledgeBase = pgTable("knowledge_base", {
+  id: serial("id").primaryKey(),
+  serverId: integer("server_id").references(() => servers.id),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  category: text("category"),
+  url: text("url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const aiResponses = pgTable("ai_responses", {
+  id: serial("id").primaryKey(),
+  ticketId: integer("ticket_id").references(() => tickets.id),
+  response: text("response").notNull(),
+  confidence: numeric("confidence").notNull(),
+  usedKnowledgeBaseIds: integer("used_knowledge_base_ids").array(),
+  createdAt: timestamp("created_at").defaultNow(),
+  status: text("status").notNull().default("pending"), 
+  handedOverToSupport: boolean("handed_over_to_support").default(false),
+});
+
+// Add to relations
+export const knowledgeBaseRelations = relations(knowledgeBase, ({ one }) => ({
+  server: one(servers, {
+    fields: [knowledgeBase.serverId],
+    references: [servers.id],
+  }),
+}));
+
+export const aiResponseRelations = relations(aiResponses, ({ one }) => ({
+  ticket: one(tickets, {
+    fields: [aiResponses.ticketId],
+    references: [tickets.id],
+  }),
+}));
+
+// Add insert schemas and types
+export const insertKnowledgeBaseSchema = createInsertSchema(knowledgeBase).omit({ 
+  id: true, 
+  createdAt: true, 
+  updatedAt: true 
+});
+export const insertAiResponseSchema = createInsertSchema(aiResponses).omit({ 
+  id: true, 
+  createdAt: true 
+});
+
+export type KnowledgeBase = typeof knowledgeBase.$inferSelect;
+export type AiResponse = typeof aiResponses.$inferSelect;
+export type InsertKnowledgeBase = z.infer<typeof insertKnowledgeBaseSchema>;
+export type InsertAiResponse = z.infer<typeof insertAiResponseSchema>;

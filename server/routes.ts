@@ -193,19 +193,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Re-fetch Discord server details and update
-      const channels = await getServerChannels(server.discordId);
-      const roles = await getServerRoles(server.discordId);
+      try {
+        const channels = await getServerChannels(server.discordId);
+        const roles = await getServerRoles(server.discordId);
 
-      // Update server with latest info
-      const updatedServer = await storage.updateServer(serverId, {
-        lastSynced: new Date().toISOString()
-      });
+        // Update server with latest info
+        const updatedServer = await storage.updateServer(serverId, {
+          lastSynced: new Date()
+        });
 
-      res.json({ 
-        server: updatedServer,
-        channels,
-        roles: roles.filter(role => role.name !== '@everyone')
-      });
+        res.json({ 
+          server: updatedServer,
+          channels,
+          roles: roles.filter(role => role.name !== '@everyone')
+        });
+      } catch (error) {
+        console.error('Discord sync error:', error);
+        return res.status(500).json({ 
+          message: 'Failed to sync with Discord',
+          details: error.message
+        });
+      }
     } catch (error) {
       console.error('Error syncing server:', error);
       res.status(500).json({ message: 'Failed to sync server' });
@@ -1604,7 +1612,200 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }
 
+  // Add these routes after existing routes
+
+  // Knowledge Base Management
+  app.get("/api/servers/:serverId/knowledge", requireAuth, async (req, res) => {
+    try {
+      const serverId = parseInt(req.params.serverId);
+      const server = await storage.getServer(serverId);
+
+      if (!server) {
+        return res.status(404).json({ message: "Server not found" });
+      }
+
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      const entries = await storage.getKnowledgeBaseByServerId(serverId);
+      res.json(entries);
+    } catch (error) {
+      console.error("Error fetching knowledge base:", error);
+      res.status(500).json({ message: "Failed to fetch knowledge base" });
+    }
+  });
+
+  app.post("/api/servers/:serverId/knowledge", requireAuth, async (req, res) => {
+    try {
+      const serverId = parseInt(req.params.serverId);
+      const server = await storage.getServer(serverId);
+
+      if (!server) {
+        return res.status(404).json({ message: "Server not found" });
+      }
+
+      if (server.ownerId !== (req.user as any).id && server.claimedByUserId !== (req.user as any).id) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      const entry = await storage.createKnowledgeBaseEntry({
+        ...req.body,
+        serverId,
+      });
+
+      res.json(entry);
+    } catch (error) {
+      console.error("Error creating knowledge base entry:", error);
+      res.status(500).json({ message: "Failed to create knowledge base entry" });
+    }
+  });
+
+  // AI Response Management
+  app.post("/api/tickets/:ticketId/ai-respond", requireAuth, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const ticket = await storage.getTicket(ticketId);
+
+      if (!ticket) {
+        return res.status(404).json({ message: "Ticket not found" });
+      }
+
+      const server = await storage.getServer(ticket.serverId);
+      if (!server) {
+        return res.status(404).json({ message: "Server not found" });
+      }
+
+      // Get knowledge base entries for this server
+      const knowledgeBase = await storage.getKnowledgeBaseByServerId(server.id);
+
+      // Get ticket messages
+      const messages = ticket.messages.map(msg => 
+        typeof msg === 'string' ? JSON.parse(msg) : msg
+      );
+
+      // Generate AI response
+      const aiResponse = await generateTicketResponse(ticket, messages, knowledgeBase);
+
+      // Create AI response record
+      const response = await storage.createAiResponse({
+        ticketId,
+        response: aiResponse.response,
+        confidence: aiResponse.confidence,
+        usedKnowledgeBaseIds: aiResponse.usedKnowledgeBaseIds,
+        handedOverToSupport: aiResponse.shouldHandover,
+      });
+
+      if (aiResponse.shouldHandover) {
+        // Update ticket status to indicate human support is needed
+        await storage.updateTicket(ticketId, {
+          status: "needs_human",
+        });
+
+        return res.json({
+          ...response,
+          message: "Response generated but requires human support",
+        });
+      }
+
+      // If confidence is high enough, automatically send the response
+      if (await validateResponse(
+        aiResponse.response,
+        aiResponse.confidence,
+        aiResponse.usedKnowledgeBaseIds
+      )) {
+        const newMessage = {
+          id: messages.length + 1,
+          content: aiResponse.response,
+          userId: "AI_ASSISTANT",
+          username: "AI Support",
+          source: "ai",
+          createdAt: new Date().toISOString(),
+        };
+
+        await storage.updateTicket(ticketId, {
+          messages: [...messages, JSON.stringify(newMessage)],
+        });
+
+        return res.json({
+          ...response,
+          message: "AI response sent successfully",
+        });
+      }
+
+      res.json(response);
+    } catch (error) {
+      console.error("Error generating AI response:", error);
+      res.status(500).json({ message: "Failed to generate AI response" });
+    }
+  });
+
+  // Support takeover endpoint
+  app.post("/api/tickets/:ticketId/takeover", requireAuth, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.ticketId);
+      const ticket = await storage.getTicket(ticketId);
+
+      if (!ticket) {
+        return res.status(404).json({ message: "Ticket not found" });
+      }
+
+      const server = await storage.getServer(ticket.serverId);
+      if (!server) {
+        return res.status(404).json({ message: "Server not found" });
+      }
+
+      // Verify user has permission to take over
+      if (
+        server.ownerId !== (req.user as any).id &&
+        server.claimedByUserId !== (req.user as any).id
+      ) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      // Update the ticket to mark it as taken over by support
+      await storage.updateTicket(ticketId, {
+        status: "open",
+        claimedBy: (req.user as any).discordId,
+      });
+
+      // Add system message about takeover
+      const messages = ticket.messages || [];
+      const takeoverMessage = {
+        id: messages.length + 1,
+        content: `Support team member has taken over the conversation.`,
+        userId: "SYSTEM",
+        username: "System",
+        source: "system",
+        createdAt: new Date().toISOString(),
+      };
+
+      await storage.updateTicket(ticketId, {
+        messages: [...messages, JSON.stringify(takeoverMessage)],
+      });
+
+      res.json({ message: "Successfully took over the ticket" });
+    } catch (error) {
+      console.error("Error taking over ticket:", error);
+      res.status(500).json({ message: "Failed to take over ticket" });
+    }
+  });
+
   return httpServer;
 }
 
 let client: any;
+
+async function generateTicketResponse(ticket: any, messages: any[], knowledgeBase: any[]): Promise<{response: string; confidence: number; usedKnowledgeBaseIds: number[]; shouldHandover: boolean}> {
+  // Placeholder implementation - replace with actual AI logic
+  const response = "I'm an AI, and I'm still under development. Please wait for a human agent.";
+  const confidence = 0.5;
+  const usedKnowledgeBaseIds: number[] = [];
+  const shouldHandover = true;
+  return { response, confidence, usedKnowledgeBaseIds, shouldHandover };
+}
+
+async function validateResponse(response: string, confidence: number, usedKnowledgeBaseIds: number[]): Promise<boolean> {
+  // Placeholder implementation - replace with actual validation logic.  For example, only allow automatic responses if confidence > 0.8.
+  return confidence > 0.8;
+}

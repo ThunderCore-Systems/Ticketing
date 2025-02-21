@@ -10,13 +10,21 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Users, Server, Coins, Shield, Edit, RefreshCw, Trash2, Plus, Ban, UserCog } from "lucide-react";
+import { Users, Server, Coins, Shield, Edit, RefreshCw, Trash2, Plus, Ban, UserCog, BookOpen, Brain } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function AdminPage() {
   const { toast } = useToast();
   const [selectedTab, setSelectedTab] = useState("users");
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedServer, setSelectedServer] = useState<number | null>(null);
+  const [newKnowledgeEntry, setNewKnowledgeEntry] = useState({
+    title: "",
+    content: "",
+    category: "",
+    url: "",
+  });
 
   // Fetch users data
   const { data: users } = useQuery({
@@ -26,6 +34,12 @@ export default function AdminPage() {
   // Fetch servers data
   const { data: servers } = useQuery({
     queryKey: ["/api/admin/servers"],
+  });
+
+  // Fetch knowledge base data
+  const { data: knowledgeBase } = useQuery({
+    queryKey: ["/api/servers", selectedServer, "knowledge"],
+    enabled: !!selectedServer,
   });
 
   // Mutations for user management
@@ -107,6 +121,22 @@ export default function AdminPage() {
     },
   });
 
+  // Add knowledge base entry mutation
+  const addKnowledgeEntry = useMutation({
+    mutationFn: async (data: typeof newKnowledgeEntry & { serverId: number }) => {
+      const res = await apiRequest("POST", `/api/servers/${data.serverId}/knowledge`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/servers", selectedServer, "knowledge"] });
+      setNewKnowledgeEntry({ title: "", content: "", category: "", url: "" });
+      toast({
+        title: "Knowledge Base Updated",
+        description: "New entry has been added successfully.",
+      });
+    },
+  });
+
   const filteredUsers = users?.filter((user: any) =>
     user.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -135,13 +165,13 @@ export default function AdminPage() {
             <Server className="h-4 w-4" />
             Servers
           </TabsTrigger>
-          <TabsTrigger value="subscriptions" className="flex items-center gap-2">
-            <Coins className="h-4 w-4" />
-            Subscriptions
+          <TabsTrigger value="knowledge" className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4" />
+            Knowledge Base
           </TabsTrigger>
-          <TabsTrigger value="security" className="flex items-center gap-2">
-            <Shield className="h-4 w-4" />
-            Security
+          <TabsTrigger value="ai" className="flex items-center gap-2">
+            <Brain className="h-4 w-4" />
+            AI Settings
           </TabsTrigger>
         </TabsList>
 
@@ -307,30 +337,177 @@ export default function AdminPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="subscriptions">
+        <TabsContent value="knowledge" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Subscription Management</CardTitle>
+              <CardTitle>Knowledge Base Management</CardTitle>
               <CardDescription>
-                Manage user subscriptions and payment status
+                Manage AI knowledge base for automatic ticket responses
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              {/* Subscription management content */}
+            <CardContent className="space-y-6">
+              <div>
+                <Select onValueChange={(value) => setSelectedServer(parseInt(value))}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Select Server" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {servers?.map((server: any) => (
+                      <SelectItem key={server.id} value={server.id.toString()}>
+                        {server.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedServer && (
+                <div className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Add New Entry</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <div>
+                          <Input
+                            placeholder="Title"
+                            value={newKnowledgeEntry.title}
+                            onChange={(e) =>
+                              setNewKnowledgeEntry(prev => ({
+                                ...prev,
+                                title: e.target.value
+                              }))
+                            }
+                          />
+                        </div>
+                        <div>
+                          <Textarea
+                            placeholder="Content"
+                            value={newKnowledgeEntry.content}
+                            onChange={(e) =>
+                              setNewKnowledgeEntry(prev => ({
+                                ...prev,
+                                content: e.target.value
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="flex gap-4">
+                          <Input
+                            placeholder="Category"
+                            value={newKnowledgeEntry.category}
+                            onChange={(e) =>
+                              setNewKnowledgeEntry(prev => ({
+                                ...prev,
+                                category: e.target.value
+                              }))
+                            }
+                          />
+                          <Input
+                            placeholder="URL (optional)"
+                            value={newKnowledgeEntry.url}
+                            onChange={(e) =>
+                              setNewKnowledgeEntry(prev => ({
+                                ...prev,
+                                url: e.target.value
+                              }))
+                            }
+                          />
+                        </div>
+                        <Button
+                          onClick={() =>
+                            addKnowledgeEntry.mutate({
+                              ...newKnowledgeEntry,
+                              serverId: selectedServer
+                            })
+                          }
+                        >
+                          Add Entry
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Title</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead>URL</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {knowledgeBase?.map((entry: any) => (
+                        <TableRow key={entry.id}>
+                          <TableCell className="font-medium">
+                            {entry.title}
+                          </TableCell>
+                          <TableCell>{entry.category}</TableCell>
+                          <TableCell>
+                            {entry.url && (
+                              <a
+                                href={entry.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-500 hover:underline"
+                              >
+                                {entry.url}
+                              </a>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Button variant="destructive" size="sm">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
-        <TabsContent value="security">
+        <TabsContent value="ai" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Security Settings</CardTitle>
+              <CardTitle>AI Configuration</CardTitle>
               <CardDescription>
-                Manage security settings and access controls
+                Configure AI behavior and response settings
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Security settings content */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Auto-Response Confidence Threshold</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Minimum confidence level required for automatic responses
+                    </p>
+                  </div>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    className="w-24"
+                    defaultValue="0.7"
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium">Enable AI First Response</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Let AI attempt to respond to tickets before human support
+                    </p>
+                  </div>
+                  <Switch defaultChecked />
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
