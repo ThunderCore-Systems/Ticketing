@@ -462,6 +462,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Generate AI response if server has AI enabled
       if (server.aiEnabled) {
+        console.log(`[AI] Server ${server.id} has AI enabled, generating response for ticket ${ticket.id}`);
         try {
           const aiResponse = await handleNewTicket(
             ticket.id,
@@ -470,6 +471,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           );
 
           if (aiResponse) {
+            console.log(`[AI] Generated response for ticket ${ticket.id} with confidence ${aiResponse.confidence}`);
             const messages = ticket.messages || [];
             const aiMessage = {
               id: messages.length + 1,
@@ -486,6 +488,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
             // Send AI response to Discord if webhook exists
             if (ticket.channelId) {
+              console.log(`[AI] Sending webhook message to channel ${ticket.channelId}`);
               await sendWebhookMessage(
                 ticket.channelId,
                 aiResponse.content,
@@ -493,13 +496,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 false,
                 server.webhookAvatar,
                 null,
+                [], // No embeds for now to ensure message sends
               );
+              console.log(`[AI] Successfully sent webhook message for ticket ${ticket.id}`);
             }
+          } else {
+            console.log(`[AI] No response generated for ticket ${ticket.id}`);
           }
         } catch (aiError) {
-          console.error("Error generating AI response:", aiError);
-          // Don't fail ticket creation if AI fails
+          console.error("[AI] Error generating response:", aiError);
         }
+      } else {
+        console.log(`[AI] Server ${server.id} does not have AI enabled`);
       }
 
       res.json(ticket);
@@ -950,7 +958,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               server.anonymousMode || false,
               server.webhookAvatar,
               (req.user as any).avatarUrl,
-              [reopenEmbed],
+              [reopenEmbed]
             );
           }
         }

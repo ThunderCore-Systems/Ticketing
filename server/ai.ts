@@ -47,7 +47,7 @@ async function sendDiscordResponse(
   content: string,
   confidence: number,
   needsHumanSupport: boolean,
-  supportRoleId?: string
+  supportRoleId: string | null | undefined
 ): Promise<void> {
   const embed = new EmbedBuilder()
     .setColor(needsHumanSupport ? 0xffcc00 : 0x00ff00)

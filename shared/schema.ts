@@ -33,7 +33,8 @@ export const servers = pgTable("servers", {
   enableStats: boolean("enable_stats").default(false),
   enableTeamStats: boolean("enable_team_stats").default(false),
   restrictClaimedMessages: boolean("restrict_claimed_messages").default(false),
-  enableAI: boolean("enable_ai").default(false),
+  aiEnabled: boolean("ai_enabled").default(false), 
+  supportRoleId: text("support_role_id"), 
   lastSynced: timestamp("last_synced"),
 });
 
