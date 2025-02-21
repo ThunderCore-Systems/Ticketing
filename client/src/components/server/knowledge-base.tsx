@@ -9,6 +9,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Trash2, Link as LinkIcon } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { InsertKnowledgeBase, InsertHelpfulLink } from "@shared/schema";
 
 interface KnowledgeBaseProps {
   serverId: number;
@@ -16,11 +17,11 @@ interface KnowledgeBaseProps {
 
 export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
   const { toast } = useToast();
-  const [newPhrase, setNewPhrase] = useState({
+  const [newPhrase, setNewPhrase] = useState<Omit<InsertKnowledgeBase, 'serverId'>>({
     keyPhrase: "",
     answer: "",
   });
-  const [newLink, setNewLink] = useState({
+  const [newLink, setNewLink] = useState<Omit<InsertHelpfulLink, 'serverId'>>({
     title: "",
     url: "",
     description: "",
@@ -266,7 +267,7 @@ export default function KnowledgeBase({ serverId }: KnowledgeBaseProps) {
                 <div>
                   <Input
                     placeholder="Description (optional)"
-                    value={newLink.description}
+                    value={newLink.description || ""}
                     onChange={(e) =>
                       setNewLink((prev) => ({
                         ...prev,

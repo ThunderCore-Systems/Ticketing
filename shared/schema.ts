@@ -80,11 +80,12 @@ export type TicketMessage = {
   createdAt: string;
 };
 
-// Add after TicketMessage type definition
+// Add new field to track if a message was saved to knowledge base
 export type Message = TicketMessage & {
   source?: 'discord' | 'dashboard';
   isSupport?: boolean;
   avatarUrl?: string;
+  savedToKnowledgeBase?: boolean;
   attachments?: Array<{
     url: string;
     name: string;
@@ -209,18 +210,26 @@ export const aiResponseRelations = relations(aiResponses, ({ one }) => ({
   }),
 }));
 
-// Add insert schemas and types
+// Add insert schemas for knowledge base tables
 export const insertKnowledgeBaseSchema = createInsertSchema(knowledgeBase).omit({ 
   id: true, 
   createdAt: true, 
   updatedAt: true 
 });
+export const insertHelpfulLinkSchema = createInsertSchema(helpfulLinks).omit({
+  id: true,
+  createdAt: true
+});
+
+export type KnowledgeBase = typeof knowledgeBase.$inferSelect;
+export type HelpfulLink = typeof helpfulLinks.$inferSelect;
+export type InsertKnowledgeBase = z.infer<typeof insertKnowledgeBaseSchema>;
+export type InsertHelpfulLink = z.infer<typeof insertHelpfulLinkSchema>;
+
 export const insertAiResponseSchema = createInsertSchema(aiResponses).omit({ 
   id: true, 
   createdAt: true 
 });
 
-export type KnowledgeBase = typeof knowledgeBase.$inferSelect;
 export type AiResponse = typeof aiResponses.$inferSelect;
-export type InsertKnowledgeBase = z.infer<typeof insertKnowledgeBaseSchema>;
 export type InsertAiResponse = z.infer<typeof insertAiResponseSchema>;
